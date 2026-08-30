@@ -31,6 +31,8 @@ type Repository interface {
 	DeleteSession(string) error
 	ListSessionsForUser(string) ([]*store.Session, error)
 	DeleteExpiredSessions() error
+	CreateOAuthTransaction(*store.OAuthTransaction) error
+	ConsumeOAuthTransaction(string, string) (*store.OAuthTransaction, error)
 	CreateResetToken(*store.ResetToken) error
 	GetResetToken(string) (*store.ResetToken, error)
 	DeleteResetToken(string) error
@@ -54,6 +56,7 @@ func Run(t *testing.T, newRepository Factory) {
 	t.Run("providers", func(t *testing.T) { testProviders(t, newRepository(t)) })
 	t.Run("deletion cascades", func(t *testing.T) { testDeletionCascades(t, newRepository(t)) })
 	t.Run("expiration cleanup", func(t *testing.T) { testExpirationCleanup(t, newRepository(t)) })
+	t.Run("oauth transactions", func(t *testing.T) { testOAuthTransactions(t, newRepository(t)) })
 }
 
 // RunDurability checks that state survives closing and reopening the backing
@@ -77,6 +80,9 @@ func RunDurability(t *testing.T, open func() Repository) {
 	if err := r.SetProviderEnabled("github", true); err != nil {
 		t.Fatal(err)
 	}
+	if err := r.CreateOAuthTransaction(&store.OAuthTransaction{ID: "durable-oauth", Provider: "github", PKCEVerifier: "durable-private", CreatedAt: time.Now(), ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
 	reopened := open()
 	if got, err := reopened.GetUserByEmail(u.Email); err != nil || got.ID != u.ID {
 		t.Fatalf("reopened user: %v, %v", got, err)
@@ -92,6 +98,9 @@ func RunDurability(t *testing.T, open func() Repository) {
 	}
 	if enabled, explicit := reopened.ProviderSetting("github"); !enabled || !explicit {
 		t.Fatalf("reopened provider setting: %v, %v", enabled, explicit)
+	}
+	if tx, err := reopened.ConsumeOAuthTransaction("durable-oauth", "github"); err != nil || tx.PKCEVerifier != "durable-private" {
+		t.Fatalf("reopened oauth transaction: %#v, %v", tx, err)
 	}
 }
 
@@ -269,6 +278,9 @@ func testExpirationCleanup(t *testing.T, r Repository) {
 	if err := r.CreateResetToken(&store.ResetToken{TokenHash: "active-reset", UserID: "user", ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
 		t.Fatal(err)
 	}
+	if err := r.CreateOAuthTransaction(&store.OAuthTransaction{ID: "expired-oauth", Provider: "github", ExpiresAt: time.Now().Add(-time.Minute)}); err != nil {
+		t.Fatal(err)
+	}
 	sessions, err := r.ListSessionsForUser("user")
 	if err != nil {
 		t.Fatal(err)
@@ -290,6 +302,26 @@ func testExpirationCleanup(t *testing.T, r Repository) {
 	}
 	if _, err := r.GetResetToken("active-reset"); err != nil {
 		t.Fatalf("active reset error = %v", err)
+	}
+	if _, err := r.ConsumeOAuthTransaction("expired-oauth", "github"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("expired oauth error = %v", err)
+	}
+}
+
+func testOAuthTransactions(t *testing.T, r Repository) {
+	tx := &store.OAuthTransaction{ID: "oauth", Provider: "github", PKCEVerifier: "private", CreatedAt: time.Now(), ExpiresAt: time.Now().Add(time.Hour)}
+	if err := r.CreateOAuthTransaction(tx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.ConsumeOAuthTransaction(tx.ID, "google"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("provider mismatch error = %v", err)
+	}
+	got, err := r.ConsumeOAuthTransaction(tx.ID, tx.Provider)
+	if err != nil || got.PKCEVerifier != tx.PKCEVerifier {
+		t.Fatalf("consume = %#v, %v", got, err)
+	}
+	if _, err := r.ConsumeOAuthTransaction(tx.ID, tx.Provider); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("replay error = %v", err)
 	}
 }
 

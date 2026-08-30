@@ -32,7 +32,10 @@ func (p *twitterProvider) Configured() bool {
 }
 func (p *twitterProvider) Readiness() Readiness { return oauthReadiness(p.config) }
 func (p *twitterProvider) AuthorizationURL(state string) string {
-	digest := sha256.Sum256([]byte(state))
+	return p.AuthorizationURLWithVerifier(state, state)
+}
+func (p *twitterProvider) AuthorizationURLWithVerifier(state, verifier string) string {
+	digest := sha256.Sum256([]byte(verifier))
 	challenge := base64.RawURLEncoding.EncodeToString(digest[:])
 	return p.config.AuthCodeURL(state,
 		oauth2.SetAuthURLParam("code_challenge", challenge),
@@ -43,7 +46,10 @@ func (p *twitterProvider) Resolve(ctx context.Context, code string) (Identity, e
 	return Identity{}, fmt.Errorf("Twitter/X token exchange requires PKCE state")
 }
 func (p *twitterProvider) ResolveWithState(ctx context.Context, code, state string) (Identity, error) {
-	token, err := p.config.Exchange(ctx, code, oauth2.SetAuthURLParam("code_verifier", state))
+	return p.ResolveWithVerifier(ctx, code, state)
+}
+func (p *twitterProvider) ResolveWithVerifier(ctx context.Context, code, verifier string) (Identity, error) {
+	token, err := p.config.Exchange(ctx, code, oauth2.SetAuthURLParam("code_verifier", verifier))
 	if err != nil {
 		return Identity{}, err
 	}

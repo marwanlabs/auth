@@ -21,6 +21,13 @@ type conformanceProvider struct {
 	resolveErr error
 }
 
+type expiredOAuthRepository struct{}
+
+func (expiredOAuthRepository) CreateOAuthTransaction(*store.OAuthTransaction) error { return nil }
+func (expiredOAuthRepository) ConsumeOAuthTransaction(string, string) (*store.OAuthTransaction, error) {
+	return nil, store.ErrNotFound
+}
+
 func (p *conformanceProvider) ID() string       { return p.id }
 func (p *conformanceProvider) Name() string     { return p.id }
 func (p *conformanceProvider) Configured() bool { return p.configured }
@@ -82,13 +89,14 @@ func TestOAuthProviderConformance(t *testing.T) {
 			if startResponse.Code != http.StatusFound {
 				t.Fatalf("start status = %d, want %d", startResponse.Code, http.StatusFound)
 			}
-			state := startResponse.Result().Cookies()[0].Value
+			stateCookie := startResponse.Result().Cookies()[0]
+			state := strings.TrimPrefix(stateCookie.Name, socialStateCookiePrefix)
 			if state == "" {
 				t.Fatal("start did not issue state cookie")
 			}
 
 			callback := httptest.NewRequest(http.MethodGet, "/api/auth/"+id+"/callback?state="+url.QueryEscape(state)+"&code=code", nil)
-			callback.AddCookie(startResponse.Result().Cookies()[0])
+			callback.AddCookie(stateCookie)
 			callbackResponse := httptest.NewRecorder()
 			mux.ServeHTTP(callbackResponse, callback)
 			if callbackResponse.Code != http.StatusFound || callbackResponse.Header().Get("Location") != "/dashboard.html" {
@@ -121,12 +129,18 @@ func TestOAuthProviderConformance(t *testing.T) {
 			startResponse := httptest.NewRecorder()
 			mux.ServeHTTP(startResponse, httptest.NewRequest(http.MethodGet, "/api/auth/"+id, nil))
 			stateCookie := startResponse.Result().Cookies()[0]
-			callback := httptest.NewRequest(http.MethodGet, "/api/auth/"+id+"/callback?state="+url.QueryEscape(stateCookie.Value)+"&error=access_denied", nil)
+			state := strings.TrimPrefix(stateCookie.Name, socialStateCookiePrefix)
+			callback := httptest.NewRequest(http.MethodGet, "/api/auth/"+id+"/callback?state="+url.QueryEscape(state)+"&error=access_denied", nil)
 			callback.AddCookie(stateCookie)
 			response := httptest.NewRecorder()
 			mux.ServeHTTP(response, callback)
 			if response.Code != http.StatusFound || !strings.Contains(response.Header().Get("Location"), "social+sign-in+was+cancelled") {
 				t.Fatalf("cancellation = %d %q", response.Code, response.Header().Get("Location"))
+			}
+			replay := httptest.NewRecorder()
+			mux.ServeHTTP(replay, callback)
+			if !strings.Contains(replay.Header().Get("Location"), "invalid+sign-in+state") {
+				t.Fatalf("cancelled replay = %q", replay.Header().Get("Location"))
 			}
 		})
 
@@ -136,7 +150,8 @@ func TestOAuthProviderConformance(t *testing.T) {
 			startResponse := httptest.NewRecorder()
 			mux.ServeHTTP(startResponse, httptest.NewRequest(http.MethodGet, "/api/auth/"+id, nil))
 			stateCookie := startResponse.Result().Cookies()[0]
-			callback := httptest.NewRequest(http.MethodGet, "/api/auth/"+id+"/callback?state="+url.QueryEscape(stateCookie.Value)+"&code=code", nil)
+			state := strings.TrimPrefix(stateCookie.Name, socialStateCookiePrefix)
+			callback := httptest.NewRequest(http.MethodGet, "/api/auth/"+id+"/callback?state="+url.QueryEscape(state)+"&code=code", nil)
 			callback.AddCookie(stateCookie)
 			response := httptest.NewRecorder()
 			mux.ServeHTTP(response, callback)
@@ -167,18 +182,87 @@ func TestOAuthCallbackRejectsInvalidState(t *testing.T) {
 	}
 }
 
+func TestOAuthCallbackRejectsProviderMismatchedCookie(t *testing.T) {
+	provider := &conformanceProvider{id: "google", configured: true}
+	_, _, mux := testMux(t, provider)
+	startResponse := httptest.NewRecorder()
+	mux.ServeHTTP(startResponse, httptest.NewRequest(http.MethodGet, "/api/auth/google", nil))
+	cookie := startResponse.Result().Cookies()[0]
+	state := strings.TrimPrefix(cookie.Name, socialStateCookiePrefix)
+	cookie.Value = "github"
+	callback := httptest.NewRequest(http.MethodGet, "/api/auth/google/callback?state="+url.QueryEscape(state)+"&code=code", nil)
+	callback.AddCookie(cookie)
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, callback)
+	if response.Code != http.StatusFound || !strings.Contains(response.Header().Get("Location"), "invalid+sign-in+state") {
+		t.Fatalf("provider mismatch = %d %q", response.Code, response.Header().Get("Location"))
+	}
+}
+
+func TestOAuthCallbackRejectsExpiredTransaction(t *testing.T) {
+	provider := &conformanceProvider{id: "google", configured: true}
+	api, _, mux := testMux(t, provider)
+	startResponse := httptest.NewRecorder()
+	mux.ServeHTTP(startResponse, httptest.NewRequest(http.MethodGet, "/api/auth/google", nil))
+	stateCookie := startResponse.Result().Cookies()[0]
+	state := strings.TrimPrefix(stateCookie.Name, socialStateCookiePrefix)
+	api.OAuth = expiredOAuthRepository{}
+	response := httptest.NewRecorder()
+	callback := httptest.NewRequest(http.MethodGet, "/api/auth/google/callback?state="+url.QueryEscape(state)+"&code=code", nil)
+	callback.AddCookie(stateCookie)
+	mux.ServeHTTP(response, callback)
+	if response.Code != http.StatusFound || !strings.Contains(response.Header().Get("Location"), "invalid+sign-in+state") {
+		t.Fatalf("expired state = %d %q", response.Code, response.Header().Get("Location"))
+	}
+}
+
 func TestOAuthCallbackRejectsProviderError(t *testing.T) {
 	provider := &conformanceProvider{id: "google", configured: true, resolveErr: context.Canceled}
 	_, _, mux := testMux(t, provider)
 	startResponse := httptest.NewRecorder()
 	mux.ServeHTTP(startResponse, httptest.NewRequest(http.MethodGet, "/api/auth/google", nil))
 	stateCookie := startResponse.Result().Cookies()[0]
-	callback := httptest.NewRequest(http.MethodGet, "/api/auth/google/callback?state="+url.QueryEscape(stateCookie.Value)+"&code=code", nil)
+	state := strings.TrimPrefix(stateCookie.Name, socialStateCookiePrefix)
+	callback := httptest.NewRequest(http.MethodGet, "/api/auth/google/callback?state="+url.QueryEscape(state)+"&code=code", nil)
 	callback.AddCookie(stateCookie)
 	response := httptest.NewRecorder()
 	mux.ServeHTTP(response, callback)
 	if response.Code != http.StatusFound || !strings.Contains(response.Header().Get("Location"), "verified+email+address") {
 		t.Fatalf("provider error = %d %q", response.Code, response.Header().Get("Location"))
+	}
+	replay := httptest.NewRecorder()
+	mux.ServeHTTP(replay, callback)
+	if !strings.Contains(replay.Header().Get("Location"), "invalid+sign-in+state") {
+		t.Fatalf("failed replay = %q", replay.Header().Get("Location"))
+	}
+}
+
+func TestOAuthTransactionsDoNotOverwriteParallelFlows(t *testing.T) {
+	provider := &conformanceProvider{id: "google", configured: true, identity: providers.Identity{Provider: "google", Subject: "subject", Email: "person@example.com", EmailVerified: true}}
+	_, _, mux := testMux(t, provider)
+	first := httptest.NewRecorder()
+	mux.ServeHTTP(first, httptest.NewRequest(http.MethodGet, "/api/auth/google", nil))
+	second := httptest.NewRecorder()
+	mux.ServeHTTP(second, httptest.NewRequest(http.MethodGet, "/api/auth/google", nil))
+	firstCookie, secondCookie := first.Result().Cookies()[0], second.Result().Cookies()[0]
+	if firstCookie.Name == secondCookie.Name {
+		t.Fatal("parallel transactions used the same cookie")
+	}
+	firstState := strings.TrimPrefix(firstCookie.Name, socialStateCookiePrefix)
+	secondState := strings.TrimPrefix(secondCookie.Name, socialStateCookiePrefix)
+	for _, flow := range []struct {
+		state  string
+		cookie *http.Cookie
+	}{
+		{firstState, firstCookie}, {secondState, secondCookie},
+	} {
+		callback := httptest.NewRequest(http.MethodGet, "/api/auth/google/callback?state="+url.QueryEscape(flow.state)+"&code=code", nil)
+		callback.AddCookie(flow.cookie)
+		response := httptest.NewRecorder()
+		mux.ServeHTTP(response, callback)
+		if response.Header().Get("Location") != "/dashboard.html" {
+			t.Fatalf("parallel callback = %q", response.Header().Get("Location"))
+		}
 	}
 }
 

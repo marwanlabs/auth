@@ -6,16 +6,20 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"time"
 
 	"authserver/internal/providers"
+	"authserver/internal/store"
 )
 
-const socialStateCookie = "social_oauth_state"
+const (
+	socialStateCookiePrefix = "social_oauth_"
+	socialTransactionTTL    = 10 * time.Minute
+)
 
 func (api *API) RegisterSocialRoutes(mux *http.ServeMux) {
 	for id, provider := range api.Providers {
-		name := id
-		p := provider
+		name, p := id, provider
 		mux.HandleFunc("GET /api/auth/"+name, func(w http.ResponseWriter, r *http.Request) { api.handleSocialStart(w, r, p) })
 		mux.HandleFunc("GET /api/auth/"+name+"/callback", func(w http.ResponseWriter, r *http.Request) { api.handleSocialCallback(w, r, p) })
 		if name == "apple" {
@@ -29,15 +33,35 @@ func (api *API) handleSocialStart(w http.ResponseWriter, r *http.Request, provid
 		writeError(w, http.StatusServiceUnavailable, "social sign-in is not configured")
 		return
 	}
+	if api.OAuth == nil {
+		writeError(w, http.StatusInternalServerError, "could not start social sign-in")
+		return
+	}
 	state, err := randomState()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not start social sign-in")
 		return
 	}
-	http.SetCookie(w, &http.Cookie{Name: socialStateCookie, Value: state, Path: "/", HttpOnly: true, Secure: api.Auth.Secure, SameSite: http.SameSiteLaxMode, MaxAge: 10 * 60})
-	authorizationURL := provider.AuthorizationURL(state)
+	verifier, err := randomState()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not start social sign-in")
+		return
+	}
+	tx := &store.OAuthTransaction{ID: state, Provider: provider.ID(), PKCEVerifier: verifier, CreatedAt: time.Now(), ExpiresAt: time.Now().Add(socialTransactionTTL)}
+	if err := api.OAuth.CreateOAuthTransaction(tx); err != nil {
+		writeError(w, http.StatusInternalServerError, "could not start social sign-in")
+		return
+	}
+	http.SetCookie(w, &http.Cookie{Name: socialStateCookiePrefix + state, Value: provider.ID(), Path: "/", HttpOnly: true, Secure: api.Auth.Secure, SameSite: http.SameSiteLaxMode, MaxAge: int(socialTransactionTTL.Seconds())})
+	authorizationURL := ""
+	if pkce, ok := provider.(providers.PKCEProvider); ok {
+		authorizationURL = pkce.AuthorizationURLWithVerifier(state, verifier)
+	} else {
+		authorizationURL = provider.AuthorizationURL(state)
+	}
 	if authorizationURL == "" {
-		clearSocialState(w, api.Auth.Secure)
+		_, _ = api.OAuth.ConsumeOAuthTransaction(state, provider.ID())
+		clearSocialState(w, api.Auth.Secure, state)
 		writeError(w, http.StatusServiceUnavailable, "social provider is unavailable")
 		return
 	}
@@ -49,21 +73,30 @@ func (api *API) handleSocialCallback(w http.ResponseWriter, r *http.Request, pro
 		socialError(w, "social sign-in is not configured")
 		return
 	}
-	cookie, err := r.Cookie(socialStateCookie)
-	if err != nil || cookie.Value == "" || cookie.Value != r.FormValue("state") {
+	state := r.FormValue("state")
+	if api.OAuth == nil || state == "" {
 		socialError(w, "invalid sign-in state")
 		return
 	}
-	clearSocialState(w, api.Auth.Secure)
+	cookie, err := r.Cookie(socialStateCookiePrefix + state)
+	if err != nil || cookie.Value != provider.ID() {
+		socialError(w, "invalid sign-in state")
+		return
+	}
+	tx, err := api.OAuth.ConsumeOAuthTransaction(state, provider.ID())
+	if err != nil {
+		socialError(w, "invalid sign-in state")
+		return
+	}
+	clearSocialState(w, api.Auth.Secure, state)
 	if r.FormValue("error") != "" {
 		socialError(w, "social sign-in was cancelled")
 		return
 	}
-	state := r.FormValue("state")
 	var identity providers.Identity
 	var resolveErr error
-	if stateful, ok := provider.(providers.StatefulProvider); ok {
-		identity, resolveErr = stateful.ResolveWithState(r.Context(), r.FormValue("code"), state)
+	if pkce, ok := provider.(providers.PKCEProvider); ok {
+		identity, resolveErr = pkce.ResolveWithVerifier(r.Context(), r.FormValue("code"), tx.PKCEVerifier)
 	} else {
 		identity, resolveErr = provider.Resolve(r.Context(), r.FormValue("code"))
 	}
@@ -91,9 +124,13 @@ func randomState() (string, error) {
 	}
 	return base64.RawURLEncoding.EncodeToString(b), nil
 }
+
 func socialError(w http.ResponseWriter, message string) {
 	http.Redirect(w, &http.Request{URL: &url.URL{}}, "/login.html?oauth_error="+url.QueryEscape(message), http.StatusFound)
 }
-func clearSocialState(w http.ResponseWriter, secure bool) {
-	http.SetCookie(w, &http.Cookie{Name: socialStateCookie, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode})
+
+func clearSocialState(w http.ResponseWriter, secure bool, state string) {
+	http.SetCookie(w, &http.Cookie{Name: socialStateCookiePrefix + state, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode})
 }
+
+var _ store.OAuthTransactionRepository = (*store.Store)(nil)

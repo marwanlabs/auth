@@ -26,10 +26,12 @@ type API struct {
 	ProviderDB ProviderRepository
 	Audit      store.AuditRepository
 	Social     *socialauth.Service
+	OAuth      store.OAuthTransactionRepository
 }
 
 func New(a *auth.Service, users UserRepository, sessions SessionRepository, reset ResetTokenRepository, providerDB ProviderRepository, social socialauth.Repository, audit store.AuditRepository) *API {
-	return &API{Auth: a, Users: users, Sessions: sessions, Reset: reset, ProviderDB: providerDB, Audit: audit, Providers: make(map[string]providers.Provider), Social: socialauth.New(social)}
+	oauth, _ := social.(store.OAuthTransactionRepository)
+	return &API{Auth: a, Users: users, Sessions: sessions, Reset: reset, ProviderDB: providerDB, Audit: audit, Providers: make(map[string]providers.Provider), Social: socialauth.New(social), OAuth: oauth}
 }
 
 // Admin mutation rate limit: each sensitive administration action is capped

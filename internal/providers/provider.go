@@ -59,6 +59,13 @@ type StatefulProvider interface {
 	ResolveWithState(ctx context.Context, code, state string) (Identity, error)
 }
 
+// PKCEProvider keeps the verifier out of the browser-visible OAuth state.
+type PKCEProvider interface {
+	Provider
+	AuthorizationURLWithVerifier(state, verifier string) string
+	ResolveWithVerifier(ctx context.Context, code, verifier string) (Identity, error)
+}
+
 type oauthAdapter struct {
 	config         oauth2.Config
 	id             string

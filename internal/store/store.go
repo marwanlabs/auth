@@ -60,6 +60,16 @@ type ResetToken struct {
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
+// OAuthTransaction is the server-side state for one provider sign-in attempt.
+// PKCEVerifier is private material and is never sent to the browser.
+type OAuthTransaction struct {
+	ID           string    `json:"id"`
+	Provider     string    `json:"provider"`
+	PKCEVerifier string    `json:"pkce_verifier"`
+	CreatedAt    time.Time `json:"created_at"`
+	ExpiresAt    time.Time `json:"expires_at"`
+}
+
 // AuditEvent records an authentication or administration outcome without
 // request secrets. Target identifies the affected user or provider when the
 // event concerns one.
@@ -81,13 +91,19 @@ type AuditRepository interface {
 	CreateAuditEvent(*AuditEvent) error
 }
 
+type OAuthTransactionRepository interface {
+	CreateOAuthTransaction(*OAuthTransaction) error
+	ConsumeOAuthTransaction(string, string) (*OAuthTransaction, error)
+}
+
 type data struct {
-	Users       map[string]*User           `json:"users"`             // keyed by user ID
-	Sessions    map[string]*Session        `json:"sessions"`          // keyed by session ID
-	ResetTokens map[string]*ResetToken     `json:"reset_tokens"`      // keyed by token hash
-	Identities  map[string]*SocialIdentity `json:"social_identities"` // keyed by identity ID
-	Providers   map[string]bool            `json:"enabled_providers"`
-	AuditEvents map[string]*AuditEvent     `json:"audit_events"` // keyed by event ID
+	Users       map[string]*User             `json:"users"`              // keyed by user ID
+	Sessions    map[string]*Session          `json:"sessions"`           // keyed by session ID
+	ResetTokens map[string]*ResetToken       `json:"reset_tokens"`       // keyed by token hash
+	OAuth       map[string]*OAuthTransaction `json:"oauth_transactions"` // keyed by transaction ID
+	Identities  map[string]*SocialIdentity   `json:"social_identities"`  // keyed by identity ID
+	Providers   map[string]bool              `json:"enabled_providers"`
+	AuditEvents map[string]*AuditEvent       `json:"audit_events"` // keyed by event ID
 }
 
 type Store struct {
@@ -104,6 +120,7 @@ func Open(path string) (*Store, error) {
 			Users:       make(map[string]*User),
 			Sessions:    make(map[string]*Session),
 			ResetTokens: make(map[string]*ResetToken),
+			OAuth:       make(map[string]*OAuthTransaction),
 			Identities:  make(map[string]*SocialIdentity),
 			Providers:   make(map[string]bool),
 			AuditEvents: make(map[string]*AuditEvent),
@@ -130,6 +147,9 @@ func Open(path string) (*Store, error) {
 	}
 	if s.d.ResetTokens == nil {
 		s.d.ResetTokens = make(map[string]*ResetToken)
+	}
+	if s.d.OAuth == nil {
+		s.d.OAuth = make(map[string]*OAuthTransaction)
 	}
 	if s.d.Identities == nil {
 		s.d.Identities = make(map[string]*SocialIdentity)
@@ -455,10 +475,49 @@ func (s *Store) DeleteExpiredSessions() error {
 			changed = true
 		}
 	}
+	for id, tx := range s.d.OAuth {
+		if now.After(tx.ExpiresAt) {
+			delete(s.d.OAuth, id)
+			changed = true
+		}
+	}
 	if !changed {
 		return nil
 	}
 	return s.saveLocked()
+}
+
+// CreateOAuthTransaction stores one short-lived provider sign-in attempt.
+func (s *Store) CreateOAuthTransaction(tx *OAuthTransaction) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.d.OAuth[tx.ID]; ok {
+		return ErrConflict
+	}
+	s.d.OAuth[tx.ID] = tx
+	return s.saveLocked()
+}
+
+// ConsumeOAuthTransaction validates and atomically removes a sign-in attempt.
+// Provider and expiry checks happen while holding the write lock.
+func (s *Store) ConsumeOAuthTransaction(id, provider string) (*OAuthTransaction, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	tx, ok := s.d.OAuth[id]
+	if !ok || tx.Provider != provider || time.Now().After(tx.ExpiresAt) {
+		if ok && time.Now().After(tx.ExpiresAt) {
+			delete(s.d.OAuth, id)
+			if err := s.saveLocked(); err != nil {
+				return nil, err
+			}
+		}
+		return nil, ErrNotFound
+	}
+	delete(s.d.OAuth, id)
+	if err := s.saveLocked(); err != nil {
+		return nil, err
+	}
+	return tx, nil
 }
 
 // --- Password reset tokens ---
