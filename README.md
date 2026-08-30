@@ -132,6 +132,12 @@ roles, disabled users, and sessions remain shared behavior.
 | `AUTH_DATABASE_URL`     | *(unset)*          | PostgreSQL connection string; when set the service validates it, connects, and applies schema migrations before serving. Credentials are never logged. |
 | `TEST_DATABASE_URL`     | *(unset)*          | Used by `go test` for the PostgreSQL integration environment; unset, those tests skip. |
 
+Run `AUTH_DATABASE_URL=... go run ./cmd/import-json -data data/store.json` to
+perform the one-time JSON migration. The command prints a per-category JSON
+report. Rejected records and database failures roll back the complete import;
+the PostgreSQL ledger refuses a repeat. Password, session, and reset hashes
+are preserved, while raw PKCE verifiers are rejected rather than copied.
+
 ## PostgreSQL runtime foundation
 
 The service can run its persistence on PostgreSQL (currently a JSON-file store;

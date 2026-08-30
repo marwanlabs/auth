@@ -112,6 +112,85 @@ type Store struct {
 	d    data
 }
 
+// Snapshot is a read-only view of all data in a JSON store. It is intended for
+// migrations and deliberately contains only the fields defined by the store
+// model, including hashes rather than bearer secrets.
+type Snapshot struct {
+	Users       []*User
+	Sessions    []*Session
+	ResetTokens []*ResetToken
+	OAuth       []*OAuthTransaction
+	Identities  []*SocialIdentity
+	Providers   map[string]bool
+	AuditEvents []*AuditEvent
+}
+
+// Snapshot returns a stable copy of the store contents without exposing its
+// internal maps or pointers to callers.
+func (s *Store) Snapshot() Snapshot {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := Snapshot{Providers: make(map[string]bool, len(s.d.Providers))}
+	for _, v := range s.d.Users {
+		if v == nil {
+			out.Users = append(out.Users, nil)
+			continue
+		}
+		copy := *v
+		out.Users = append(out.Users, &copy)
+	}
+	for _, v := range s.d.Sessions {
+		if v == nil {
+			out.Sessions = append(out.Sessions, nil)
+			continue
+		}
+		copy := *v
+		out.Sessions = append(out.Sessions, &copy)
+	}
+	for _, v := range s.d.ResetTokens {
+		if v == nil {
+			out.ResetTokens = append(out.ResetTokens, nil)
+			continue
+		}
+		copy := *v
+		out.ResetTokens = append(out.ResetTokens, &copy)
+	}
+	for _, v := range s.d.OAuth {
+		if v == nil {
+			out.OAuth = append(out.OAuth, nil)
+			continue
+		}
+		copy := *v
+		out.OAuth = append(out.OAuth, &copy)
+	}
+	for _, v := range s.d.Identities {
+		if v == nil {
+			out.Identities = append(out.Identities, nil)
+			continue
+		}
+		copy := *v
+		out.Identities = append(out.Identities, &copy)
+	}
+	for _, v := range s.d.AuditEvents {
+		if v == nil {
+			out.AuditEvents = append(out.AuditEvents, nil)
+			continue
+		}
+		copy := *v
+		out.AuditEvents = append(out.AuditEvents, &copy)
+	}
+	for k, v := range s.d.Providers {
+		out.Providers[k] = v
+	}
+	sort.Slice(out.Users, func(i, j int) bool { return out.Users[i].ID < out.Users[j].ID })
+	sort.Slice(out.Sessions, func(i, j int) bool { return out.Sessions[i].ID < out.Sessions[j].ID })
+	sort.Slice(out.ResetTokens, func(i, j int) bool { return out.ResetTokens[i].TokenHash < out.ResetTokens[j].TokenHash })
+	sort.Slice(out.OAuth, func(i, j int) bool { return out.OAuth[i].ID < out.OAuth[j].ID })
+	sort.Slice(out.Identities, func(i, j int) bool { return out.Identities[i].ID < out.Identities[j].ID })
+	sort.Slice(out.AuditEvents, func(i, j int) bool { return out.AuditEvents[i].ID < out.AuditEvents[j].ID })
+	return out
+}
+
 // Open loads the store from path, creating an empty one if it doesn't exist.
 func Open(path string) (*Store, error) {
 	s := &Store{
