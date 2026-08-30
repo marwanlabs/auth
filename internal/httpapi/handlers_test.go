@@ -19,7 +19,7 @@ func testAPI(t *testing.T) (*API, *http.ServeMux) {
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
-	api := New(&auth.Service{Store: s}, s)
+	api := New(&auth.Service{Store: s}, s, s, s, s, s)
 	mux := http.NewServeMux()
 	api.Register(mux)
 	return api, mux
@@ -133,7 +133,7 @@ func TestLoginAuditEventsContainOutcomeAndSafeContext(t *testing.T) {
 	if err := s.CreateUser(&store.User{ID: "user-1", Email: "person@example.com", PasswordHash: hash}); err != nil {
 		t.Fatal(err)
 	}
-	api := New(&auth.Service{Store: s}, s)
+	api := New(&auth.Service{Store: s}, s, s, s, s, s)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/login", strings.NewReader(`{"email":"person@example.com","password":"wrong password"}`))
 	req.RemoteAddr = "192.0.2.10:1234"
@@ -180,7 +180,7 @@ func TestSignupAuditEventsRecordSuccessAndFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	api := New(&auth.Service{Store: s}, s)
+	api := New(&auth.Service{Store: s}, s, s, s, s, s)
 
 	for _, body := range []string{
 		`{"email":"new@example.com","password":"correct horse battery staple"}`,

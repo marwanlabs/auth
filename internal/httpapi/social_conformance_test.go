@@ -31,21 +31,21 @@ func (p *conformanceProvider) Resolve(context.Context, string) (providers.Identi
 	return p.identity, p.resolveErr
 }
 
-func testAPI(t testing.TB) *API {
+func testConformanceAPI(t testing.TB) (*API, *store.Store) {
 	t.Helper()
 	s, err := store.Open(t.TempDir() + "/store.json")
 	if err != nil {
 		t.Fatal(err)
 	}
-	return New(&auth.Service{Store: s}, s)
+	return New(&auth.Service{Store: s}, s, s, s, s, s), s
 }
 
 func testMux(t testing.TB, provider providers.Provider) (*API, *http.ServeMux) {
 	t.Helper()
-	api := testAPI(t)
+	api, s := testConformanceAPI(t)
 	api.Providers[provider.ID()] = provider
 	if provider.Configured() {
-		if err := api.Store.SetProviderEnabled(provider.ID(), true); err != nil {
+		if err := s.SetProviderEnabled(provider.ID(), true); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -88,7 +88,11 @@ func TestOAuthProviderConformance(t *testing.T) {
 			if callbackResponse.Code != http.StatusFound || callbackResponse.Header().Get("Location") != "/dashboard.html" {
 				t.Fatalf("callback = %d %q, want dashboard redirect", callbackResponse.Code, callbackResponse.Header().Get("Location"))
 			}
-			if _, err := api.Store.GetIdentity(id, "subject-"+id); err != nil {
+			db, ok := api.Users.(*store.Store)
+			if !ok {
+				t.Fatal("conformance API does not use a JSON store")
+			}
+			if _, err := db.GetIdentity(id, "subject-"+id); err != nil {
 				t.Fatalf("identity was not persisted: %v", err)
 			}
 			var sessionCookie *http.Cookie
@@ -177,7 +181,7 @@ func TestOAuthCallbackRejectsProviderError(t *testing.T) {
 }
 
 func TestOAuthProviderListIncludesAllSupportedProviders(t *testing.T) {
-	api := testAPI(t)
+	api, _ := testConformanceAPI(t)
 	for _, id := range supportedProviderIDs() {
 		api.Providers[id] = &conformanceProvider{id: id, configured: true}
 	}

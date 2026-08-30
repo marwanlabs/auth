@@ -70,5 +70,5 @@ func testProviderAPI(t *testing.T) (*API, func()) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return New(&auth.Service{Store: s}, s), func() { os.Remove(file.Name()) }
+	return New(&auth.Service{Store: s}, s, s, s, s, s), func() { os.Remove(file.Name()) }
 }
