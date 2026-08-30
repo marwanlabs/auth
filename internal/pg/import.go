@@ -54,6 +54,13 @@ func (r *ImportReport) category(name, key, reason string) *CategoryReport {
 
 func ImportJSON(ctx context.Context, db *sql.DB, path string) (ImportReport, error) {
 	var report ImportReport
+	info, err := os.Stat(path)
+	if err != nil {
+		return report, fmt.Errorf("inspect JSON store: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return report, fmt.Errorf("inspect JSON store: %s is not a regular file", path)
+	}
 	source, err := store.Open(path)
 	if err != nil {
 		return report, err

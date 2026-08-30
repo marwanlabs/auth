@@ -51,6 +51,13 @@ func TestValidateSnapshotReportsEveryCategoryAndInvalidOAuth(t *testing.T) {
 	}
 }
 
+func TestImportJSONRejectsMissingSource(t *testing.T) {
+	_, err := ImportJSON(context.Background(), nil, "/does/not/exist/store.json")
+	if err == nil {
+		t.Fatal("expected missing source error")
+	}
+}
+
 func TestPostgresJSONImportRollbackRepeatAndAllCategories(t *testing.T) {
 	baseURL := os.Getenv("TEST_DATABASE_URL")
 	if baseURL == "" {

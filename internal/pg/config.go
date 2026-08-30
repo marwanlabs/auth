@@ -31,8 +31,8 @@ type Config struct {
 }
 
 // ConfigFromEnv builds a Config from a getenv-style lookup. It returns
-// (nil, nil) when the variable is unset or empty so callers can keep their
-// existing store without treating "not configured" as an error.
+// (nil, nil) when the variable is unset or empty; callers decide whether
+// PostgreSQL is optional or required for their mode.
 func ConfigFromEnv(getenv func(string) string) (*Config, error) {
 	dsn := strings.TrimSpace(getenv(DefaultEnvVar))
 	if dsn == "" {
