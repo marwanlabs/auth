@@ -52,13 +52,24 @@ func main() {
 				Endpoint: endpoints.Google, RedirectURL: googleRedirectURL,
 				Scopes: []string{"openid", "email", "profile"},
 			},
-			Secure: secureCookies,
+			Secure: secureCookies, Name: "google", UserInfoURL: "https://openidconnect.googleapis.com/v1/userinfo",
+		}
+	}
+	facebookClientID := os.Getenv("AUTH_FACEBOOK_CLIENT_ID")
+	facebookClientSecret := os.Getenv("AUTH_FACEBOOK_CLIENT_SECRET")
+	facebookRedirectURL := getenv("AUTH_FACEBOOK_REDIRECT_URL", "http://localhost:8090/api/auth/facebook/callback")
+	if facebookClientID != "" && facebookClientSecret != "" {
+		api.Facebook = &httpapi.OAuthProvider{
+			Config: oauth2.Config{ClientID: facebookClientID, ClientSecret: facebookClientSecret, Endpoint: endpoints.Facebook, RedirectURL: facebookRedirectURL, Scopes: []string{"email"}},
+			Secure: secureCookies, Name: "facebook", UserInfoURL: "https://graph.facebook.com/me?fields=id,email",
 		}
 	}
 
 	mux := http.NewServeMux()
 	api.Register(mux)
 	api.RegisterGoogle(mux)
+	api.RegisterFacebook(mux)
+	api.RegisterProviderRoutes(mux)
 
 	// Serve the static frontend from ./web at the root.
 	fs := http.FileServer(http.Dir("web"))

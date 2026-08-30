@@ -43,6 +43,10 @@ const Auth = {
     api('/api/admin/users/status', { method: 'POST', body: JSON.stringify({ user_id, disabled }) }),
   deleteUser: (user_id) =>
     api('/api/admin/users/delete', { method: 'POST', body: JSON.stringify({ user_id }) }),
+  listProviders: () => api('/api/auth/providers'),
+  listAdminProviders: () => api('/api/admin/providers'),
+  setProvider: (provider, enabled) =>
+    api('/api/admin/providers', { method: 'POST', body: JSON.stringify({ provider, enabled }) }),
 };
 
 // Redirects an unauthenticated visitor to the login page. Call at the top

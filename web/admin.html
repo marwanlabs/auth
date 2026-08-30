@@ -26,6 +26,11 @@
         </table>
       </div>
     </div>
+    <div class="panel provider-settings">
+      <h2>Sign-in providers</h2>
+      <p class="subtitle">Choose which configured social providers users can use. Credentials stay on the server.</p>
+      <div id="providers-list"><p>Loading…</p></div>
+    </div>
   </main>
   <script src="/js/api.js"></script>
   <script>
@@ -91,6 +96,24 @@
       try { users = await Auth.listUsers(); errorBox.hidden = true; render(); }
       catch (_) { window.location.href = '/dashboard.html'; }
     }
+    async function loadProviders() {
+      const list = document.getElementById('providers-list');
+      try {
+        const providers = await Auth.listAdminProviders();
+        list.innerHTML = '';
+        for (const provider of providers) {
+          const row = document.createElement('div'); row.className = 'provider-row';
+          const info = document.createElement('div');
+          const name = document.createElement('strong'); name.textContent = provider.name;
+          const state = document.createElement('small'); state.textContent = provider.configured ? 'Credentials configured' : 'Credentials missing';
+          info.append(name, state);
+          const toggle = document.createElement('button'); toggle.className = 'provider-toggle secondary'; toggle.textContent = provider.enabled ? 'Enabled' : 'Disabled';
+          toggle.disabled = !provider.configured;
+          toggle.addEventListener('click', async () => { toggle.disabled = true; try { await Auth.setProvider(provider.id, !provider.enabled); await loadProviders(); } catch (err) { showError(errorBox, err); toggle.disabled = false; } });
+          row.append(info, toggle); list.appendChild(row);
+        }
+      } catch (err) { showError(errorBox, err); }
+    }
     search.addEventListener('input', render);
     (async () => {
       try {
@@ -98,6 +121,7 @@
         if (me.role !== 'admin') { window.location.href = '/dashboard.html'; return; }
         window.currentAdminID = me.id;
         await load();
+        await loadProviders();
       } catch (_) { window.location.href = '/login.html'; }
     })();
   </script>

@@ -20,8 +20,8 @@
       <input type="password" id="password" name="password" autocomplete="current-password" required>
 
       <button type="submit" id="submit-btn">Sign in</button>
-      <a class="oauth-button" href="/api/auth/google">Continue with Google</a>
-      <div class="oauth-divider"><span>or use email</span></div>
+      <div id="oauth-providers"></div>
+      <div class="oauth-divider" hidden><span>or use email</span></div>
       <div class="error-box" id="error-box" hidden></div>
 
       <p class="footer-link">
@@ -39,6 +39,18 @@
 
     const oauthError = new URLSearchParams(window.location.search).get('oauth_error');
     if (oauthError) showError(errorBox, oauthError);
+
+    fetch('/api/auth/providers').then(r => r.ok ? r.json() : []).then(providers => {
+      const container = document.getElementById('oauth-providers');
+      providers.forEach(provider => {
+        const link = document.createElement('a');
+        link.className = 'oauth-button';
+        link.href = '/api/auth/' + encodeURIComponent(provider.id);
+        link.textContent = 'Continue with ' + provider.name;
+        container.appendChild(link);
+      });
+      if (providers.length) document.querySelector('.oauth-divider').hidden = false;
+    }).catch(() => {});
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();

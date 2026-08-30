@@ -14,9 +14,10 @@ import (
 )
 
 type API struct {
-	Auth  *auth.Service
-	Store *store.Store
-	Google *GoogleOAuth
+	Auth     *auth.Service
+	Store    *store.Store
+	Google   *OAuthProvider
+	Facebook *OAuthProvider
 }
 
 func New(a *auth.Service, s *store.Store) *API {

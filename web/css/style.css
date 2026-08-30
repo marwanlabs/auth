@@ -138,6 +138,12 @@ button:disabled { opacity: 0.6; cursor: default; }
   border-top: 1px solid var(--border);
 }
 
+.provider-settings { margin-top: 16px; }
+.provider-settings h2 { font-size: 18px; margin: 0 0 4px; }
+.provider-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 0; border-top: 1px solid var(--border); }
+.provider-row small { display: block; color: var(--text-muted); margin-top: 3px; }
+.provider-toggle { width: auto; min-width: 92px; margin: 0; }
+
 button.secondary {
   background: transparent;
   border: 1px solid var(--border);

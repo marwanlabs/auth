@@ -33,6 +33,14 @@ type User struct {
 	CreatedAt    time.Time `json:"created_at"`
 }
 
+type SocialIdentity struct {
+	ID        string    `json:"id"`
+	Provider  string    `json:"provider"`
+	Subject   string    `json:"subject"`
+	UserID    string    `json:"user_id"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 // Session represents a logged-in device/browser. TokenHash is the SHA-256
 // of the secret sent to the client in a cookie — never the raw token.
 type Session struct {
@@ -53,9 +61,11 @@ type ResetToken struct {
 }
 
 type data struct {
-	Users       map[string]*User       `json:"users"`        // keyed by user ID
-	Sessions    map[string]*Session    `json:"sessions"`     // keyed by session ID
-	ResetTokens map[string]*ResetToken `json:"reset_tokens"` // keyed by token hash
+	Users       map[string]*User           `json:"users"`             // keyed by user ID
+	Sessions    map[string]*Session        `json:"sessions"`          // keyed by session ID
+	ResetTokens map[string]*ResetToken     `json:"reset_tokens"`      // keyed by token hash
+	Identities  map[string]*SocialIdentity `json:"social_identities"` // keyed by identity ID
+	Providers   map[string]bool            `json:"enabled_providers"`
 }
 
 type Store struct {
@@ -72,6 +82,8 @@ func Open(path string) (*Store, error) {
 			Users:       make(map[string]*User),
 			Sessions:    make(map[string]*Session),
 			ResetTokens: make(map[string]*ResetToken),
+			Identities:  make(map[string]*SocialIdentity),
+			Providers:   make(map[string]bool),
 		},
 	}
 	raw, err := os.ReadFile(path)
@@ -95,6 +107,12 @@ func Open(path string) (*Store, error) {
 	}
 	if s.d.ResetTokens == nil {
 		s.d.ResetTokens = make(map[string]*ResetToken)
+	}
+	if s.d.Identities == nil {
+		s.d.Identities = make(map[string]*SocialIdentity)
+	}
+	if s.d.Providers == nil {
+		s.d.Providers = make(map[string]bool)
 	}
 	return s, nil
 }
@@ -206,6 +224,58 @@ func (s *Store) DeleteUser(id string) error {
 			delete(s.d.ResetTokens, tokenHash)
 		}
 	}
+	for identityID, identity := range s.d.Identities {
+		if identity.UserID == id {
+			delete(s.d.Identities, identityID)
+		}
+	}
+	return s.saveLocked()
+}
+
+func (s *Store) GetIdentity(provider, subject string) (*SocialIdentity, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, identity := range s.d.Identities {
+		if identity.Provider == provider && identity.Subject == subject {
+			return identity, nil
+		}
+	}
+	return nil, ErrNotFound
+}
+
+func (s *Store) CreateIdentity(identity *SocialIdentity) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, existing := range s.d.Identities {
+		if existing.Provider == identity.Provider && existing.Subject == identity.Subject {
+			return ErrConflict
+		}
+	}
+	s.d.Identities[identity.ID] = identity
+	return s.saveLocked()
+}
+
+func (s *Store) ListProviderSettings() map[string]bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	settings := make(map[string]bool, len(s.d.Providers))
+	for provider, enabled := range s.d.Providers {
+		settings[provider] = enabled
+	}
+	return settings
+}
+
+func (s *Store) ProviderSetting(provider string) (bool, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	enabled, ok := s.d.Providers[provider]
+	return enabled, ok
+}
+
+func (s *Store) SetProviderEnabled(provider string, enabled bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.d.Providers[provider] = enabled
 	return s.saveLocked()
 }
 

@@ -133,6 +133,7 @@ Then open http://localhost:3000.
 - Password change (requires current password)
 - Password reset via emailed one-time link (single-use, 1-hour expiry)
 - Optional Google OAuth sign-in with automatic linking to existing email accounts
+- Optional Google and Facebook OAuth sign-in with administrator-controlled availability
 - Rate limiting on auth endpoints (10 req/min/IP by default)
 - No user enumeration: login, signup-conflict, and reset-request all return
   intentionally vague responses
@@ -181,6 +182,9 @@ that exact URL to the Google OAuth client.
 | POST   | `/api/login`                  | No             | Start a session                    |
 | GET    | `/api/auth/google`            | No             | Start Google sign-in (when configured) |
 | GET    | `/api/auth/google/callback`   | No             | Complete Google sign-in            |
+| GET    | `/api/auth/facebook`           | No             | Start Facebook sign-in             |
+| GET    | `/api/auth/facebook/callback`  | No             | Complete Facebook sign-in           |
+| GET    | `/api/auth/providers`          | No             | List enabled social providers      |
 | POST   | `/api/logout`                 | Yes            | Clear the current session cookie   |
 | GET    | `/api/me`                     | Yes            | Current user info                  |
 | POST   | `/api/change-password`        | Yes            | Requires current password          |
@@ -192,6 +196,8 @@ that exact URL to the Google OAuth client.
 | POST   | `/api/admin/users/role`        | Yes (admin)    | Change another user's role         |
 | POST   | `/api/admin/users/status`      | Yes (admin)    | Disable or enable another user     |
 | POST   | `/api/admin/users/delete`      | Yes (admin)    | Permanently delete another user   |
+| GET    | `/api/admin/providers`         | Yes (admin)    | List social-provider settings     |
+| POST   | `/api/admin/providers`         | Yes (admin)    | Enable or disable a provider      |
 
 All state-changing (`POST`) requests require an `X-CSRF-Token` header
 matching the `csrf_token` cookie — the included frontend JS
