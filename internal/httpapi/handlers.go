@@ -32,17 +32,21 @@ func New(a *auth.Service, users UserRepository, sessions SessionRepository, rese
 // Register attaches all routes to mux.
 func (api *API) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /healthz", api.handleHealth)
-	loginLimiter := auth.NewRateLimiter(10, time.Minute) // 10 attempts/min/IP
+	const authRateLimit = 10
+	const authRateWindow = time.Minute
+	signupLimiter := auth.NewRateLimiter(authRateLimit, authRateWindow)
+	loginLimiter := auth.NewRateLimiter(authRateLimit, authRateWindow)
+	resetLimiter := auth.NewRateLimiter(authRateLimit, authRateWindow)
 
-	mux.HandleFunc("POST /api/signup", loginLimiter.Middleware(clientIPKey, api.handleSignup))
+	mux.HandleFunc("POST /api/signup", signupLimiter.Middleware(clientIPKey, api.handleSignup))
 	mux.HandleFunc("POST /api/login", loginLimiter.Middleware(clientIPKey, api.handleLogin))
 	mux.HandleFunc("POST /api/logout", api.Auth.RequireAuth(api.handleLogout))
 	mux.HandleFunc("GET /api/me", api.Auth.RequireAuth(api.handleMe))
 	mux.HandleFunc("POST /api/change-password", api.Auth.RequireAuth(api.handleChangePassword))
 	mux.HandleFunc("GET /api/sessions", api.Auth.RequireAuth(api.handleListSessions))
 	mux.HandleFunc("POST /api/sessions/revoke", api.Auth.RequireAuth(api.handleRevokeSession))
-	mux.HandleFunc("POST /api/password-reset/request", loginLimiter.Middleware(clientIPKey, api.handleResetRequest))
-	mux.HandleFunc("POST /api/password-reset/confirm", loginLimiter.Middleware(clientIPKey, api.handleResetConfirm))
+	mux.HandleFunc("POST /api/password-reset/request", resetLimiter.Middleware(clientIPKey, api.handleResetRequest))
+	mux.HandleFunc("POST /api/password-reset/confirm", resetLimiter.Middleware(clientIPKey, api.handleResetConfirm))
 
 	// Example of an admin-only route — extend as your app needs.
 	mux.HandleFunc("GET /api/admin/users", api.Auth.RequireRole(store.RoleAdmin, api.handleListUsers))
