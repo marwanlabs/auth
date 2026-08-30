@@ -242,6 +242,20 @@ AUTH_DISCORD_REDIRECT_URL=http://localhost:8090/api/auth/discord/callback
 
 Enable Discord from the admin dashboard after configuring the credentials.
 
+### LinkedIn sign-in
+
+Create a LinkedIn application with Sign In with LinkedIn using OpenID Connect
+enabled, then add the callback URL:
+
+```
+AUTH_LINKEDIN_CLIENT_ID=...
+AUTH_LINKEDIN_CLIENT_SECRET=...
+AUTH_LINKEDIN_REDIRECT_URL=http://localhost:8090/api/auth/linkedin/callback
+```
+
+The integration requests `openid`, `profile`, and `email`. Enable LinkedIn
+from the admin dashboard after configuring the credentials.
+
 ## API reference
 
 | Method | Path                          | Auth required | Description                       |
@@ -262,6 +276,8 @@ Enable Discord from the admin dashboard after configuring the credentials.
 | GET    | `/api/auth/gitlab/callback`     | No             | Complete GitLab sign-in             |
 | GET    | `/api/auth/discord`             | No             | Start Discord sign-in               |
 | GET    | `/api/auth/discord/callback`    | No             | Complete Discord sign-in            |
+| GET    | `/api/auth/linkedin`             | No             | Start LinkedIn sign-in              |
+| GET    | `/api/auth/linkedin/callback`    | No             | Complete LinkedIn sign-in           |
 | GET    | `/api/auth/providers`          | No             | List enabled social providers      |
 | POST   | `/api/logout`                 | Yes            | Clear the current session cookie   |
 | GET    | `/api/me`                     | Yes            | Current user info                  |
