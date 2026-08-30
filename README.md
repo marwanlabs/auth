@@ -175,6 +175,21 @@ TEST_DATABASE_URL='postgres://postgres:postgres@127.0.0.1:55432/postgres?sslmode
 docker compose -f docker-compose.test.yml down -v
 ```
 
+The Compose database is isolated in the `authserver_default` network and is
+published on `127.0.0.1:55432`. The default database name is `postgres`; this
+does not refer to another project's database because the container and port
+are separate. Do not use another project's `localhost:5432` connection string.
+Use this connection setting for Authserver's local Compose database:
+
+```
+AUTH_DATABASE_URL='postgres://postgres:postgres@127.0.0.1:55432/postgres?sslmode=disable'
+TEST_DATABASE_URL="$AUTH_DATABASE_URL"
+```
+
+If Docker reports that its predefined address pools are exhausted, do not
+start a second Compose project name. Reuse the existing `authserver` Compose
+project, or remove unused Docker networks before retrying.
+
 The import is transactional and includes core authentication data, sessions,
 reset tokens, social identities, provider settings, audit events, and OAuth
 transactions. Rejected records roll back the complete import, and the ledger
