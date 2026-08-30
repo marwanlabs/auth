@@ -64,11 +64,25 @@ func main() {
 			Secure: secureCookies, Name: "facebook", UserInfoURL: "https://graph.facebook.com/me?fields=id,email",
 		}
 	}
+	githubClientID := os.Getenv("AUTH_GITHUB_CLIENT_ID")
+	githubClientSecret := os.Getenv("AUTH_GITHUB_CLIENT_SECRET")
+	githubRedirectURL := getenv("AUTH_GITHUB_REDIRECT_URL", "http://localhost:8090/api/auth/github/callback")
+	if githubClientID != "" && githubClientSecret != "" {
+		api.GitHub = &httpapi.OAuthProvider{
+			Config: oauth2.Config{
+				ClientID: githubClientID, ClientSecret: githubClientSecret,
+				Endpoint:    oauth2.Endpoint{AuthURL: "https://github.com/login/oauth/authorize", TokenURL: "https://github.com/login/oauth/access_token"},
+				RedirectURL: githubRedirectURL, Scopes: []string{"user:email"},
+			},
+			Secure: secureCookies, Name: "github", UserInfoURL: "https://api.github.com/user",
+		}
+	}
 
 	mux := http.NewServeMux()
 	api.Register(mux)
 	api.RegisterGoogle(mux)
 	api.RegisterFacebook(mux)
+	api.RegisterGitHub(mux)
 	api.RegisterProviderRoutes(mux)
 
 	// Serve the static frontend from ./web at the root.

@@ -133,6 +133,7 @@ Then open http://localhost:3000.
 - Password change (requires current password)
 - Password reset via emailed one-time link (single-use, 1-hour expiry)
 - Optional Google OAuth sign-in with automatic linking to existing email accounts
+- Optional Google, Facebook, and GitHub OAuth sign-in with administrator-controlled availability
 - Optional Google and Facebook OAuth sign-in with administrator-controlled availability
 - Rate limiting on auth endpoints (10 req/min/IP by default)
 - No user enumeration: login, signup-conflict, and reset-request all return
@@ -184,6 +185,8 @@ that exact URL to the Google OAuth client.
 | GET    | `/api/auth/google/callback`   | No             | Complete Google sign-in            |
 | GET    | `/api/auth/facebook`           | No             | Start Facebook sign-in             |
 | GET    | `/api/auth/facebook/callback`  | No             | Complete Facebook sign-in           |
+| GET    | `/api/auth/github`              | No             | Start GitHub sign-in                |
+| GET    | `/api/auth/github/callback`     | No             | Complete GitHub sign-in             |
 | GET    | `/api/auth/providers`          | No             | List enabled social providers      |
 | POST   | `/api/logout`                 | Yes            | Clear the current session cookie   |
 | GET    | `/api/me`                     | Yes            | Current user info                  |

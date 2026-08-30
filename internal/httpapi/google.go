@@ -30,6 +30,10 @@ func (api *API) RegisterFacebook(mux *http.ServeMux) {
 	api.registerProvider(mux, "facebook", api.Facebook)
 }
 
+func (api *API) RegisterGitHub(mux *http.ServeMux) {
+	api.registerProvider(mux, "github", api.GitHub)
+}
+
 func (api *API) registerProvider(mux *http.ServeMux, name string, provider *OAuthProvider) {
 	mux.HandleFunc("GET /api/auth/"+name, func(w http.ResponseWriter, r *http.Request) { api.handleOAuthStart(w, r, provider) })
 	mux.HandleFunc("GET /api/auth/"+name+"/callback", func(w http.ResponseWriter, r *http.Request) { api.handleOAuthCallback(w, r, provider) })
@@ -163,7 +167,45 @@ func fetchOAuthProfile(r *http.Request, provider *OAuthProvider, client *http.Cl
 	if provider.Name == "facebook" {
 		profile.EmailVerified = profile.Email != ""
 	}
+	if provider.Name == "github" && profile.Email == "" {
+		if err := fetchGitHubEmail(r, client, &profile); err != nil {
+			return nil, err
+		}
+	}
 	return &profile, nil
+}
+
+type githubEmail struct {
+	Email    string `json:"email"`
+	Primary  bool   `json:"primary"`
+	Verified bool   `json:"verified"`
+}
+
+func fetchGitHubEmail(r *http.Request, client *http.Client, profile *oauthProfile) error {
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, "https://api.github.com/user/emails", nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("GitHub email endpoint returned %s", resp.Status)
+	}
+	var emails []githubEmail
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&emails); err != nil {
+		return err
+	}
+	for _, email := range emails {
+		if email.Primary && email.Verified {
+			profile.Email, profile.EmailVerified = email.Email, true
+			return nil
+		}
+	}
+	return fmt.Errorf("GitHub has no verified primary email")
 }
 
 func oauthConfigured(provider *OAuthProvider) bool {

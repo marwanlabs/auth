@@ -18,6 +18,7 @@ type API struct {
 	Store    *store.Store
 	Google   *OAuthProvider
 	Facebook *OAuthProvider
+	GitHub   *OAuthProvider
 }
 
 func New(a *auth.Service, s *store.Store) *API {

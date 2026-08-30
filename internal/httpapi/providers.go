@@ -78,6 +78,8 @@ func (api *API) providerConfigured(id string) bool {
 		return oauthConfigured(api.Google)
 	case "facebook":
 		return oauthConfigured(api.Facebook)
+	case "github":
+		return oauthConfigured(api.GitHub)
 	default:
 		return false
 	}
