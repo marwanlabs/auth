@@ -171,6 +171,53 @@ func TestPostgresCoreStoreContract(t *testing.T) {
 	contract.RunCoreDurability(t, func() contract.CoreRepository { return NewStore(db) })
 }
 
+func TestPostgresAuditStoreContract(t *testing.T) {
+	baseURL := os.Getenv("TEST_DATABASE_URL")
+	if baseURL == "" {
+		t.Skip("TEST_DATABASE_URL not set; skipping PostgreSQL audit store contract")
+	}
+	ctx := context.Background()
+	cfg, err := ParseConfig(baseURL)
+	if err != nil {
+		t.Fatalf("ParseConfig: %v", err)
+	}
+	admin, err := Connect(ctx, cfg)
+	if err != nil {
+		t.Fatalf("connecting to test database: %v", err)
+	}
+	defer admin.Close()
+	schema := "auth_audit_test_" + strconv.FormatInt(time.Now().UnixNano(), 10)
+	quoted := `"` + strings.ReplaceAll(schema, `"`, `""`) + `"`
+	if _, err := admin.ExecContext(ctx, "CREATE SCHEMA "+quoted); err != nil {
+		t.Fatalf("creating test schema: %v", err)
+	}
+	defer admin.ExecContext(context.Background(), "DROP SCHEMA "+quoted+" CASCADE")
+
+	connCfg, err := pgx.ParseConfig(baseURL)
+	if err != nil {
+		t.Fatalf("parse test URL: %v", err)
+	}
+	if connCfg.Config.RuntimeParams == nil {
+		connCfg.Config.RuntimeParams = map[string]string{}
+	}
+	connCfg.Config.RuntimeParams["search_path"] = schema
+	db := stdlib.OpenDB(*connCfg)
+	defer db.Close()
+	if _, err := Migrate(ctx, db); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	contract.RunAudit(t, func(t *testing.T) contract.AuditRepository {
+		if _, err := db.ExecContext(ctx, "DELETE FROM audit_events"); err != nil {
+			t.Fatal(err)
+		}
+		return NewStore(db)
+	})
+	if _, err := db.ExecContext(ctx, "DELETE FROM audit_events"); err != nil {
+		t.Fatal(err)
+	}
+	contract.RunAuditDurability(t, func() contract.AuditRepository { return NewStore(db) })
+}
+
 func appliedLedger(ctx context.Context, t *testing.T, db *sql.DB) map[int64]bool {
 	t.Helper()
 	rows, err := db.QueryContext(ctx, "SELECT version FROM schema_migrations ORDER BY version")

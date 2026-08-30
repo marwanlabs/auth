@@ -27,3 +27,24 @@ func TestJSONStoreDurableReopen(t *testing.T) {
 		return s
 	})
 }
+
+func TestJSONStoreAuditContract(t *testing.T) {
+	contract.RunAudit(t, func(t *testing.T) contract.AuditRepository {
+		s, err := store.Open(t.TempDir() + "/store.json")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return s
+	})
+}
+
+func TestJSONStoreAuditDurability(t *testing.T) {
+	path := t.TempDir() + "/store.json"
+	contract.RunAuditDurability(t, func() contract.AuditRepository {
+		s, err := store.Open(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return s
+	})
+}

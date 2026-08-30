@@ -47,6 +47,11 @@ type Repository interface {
 	ConsumeOAuthTransaction(string, string) (*store.OAuthTransaction, error)
 }
 
+type AuditRepository interface {
+	CreateAuditEvent(*store.AuditEvent) error
+	ListAuditEvents() []*store.AuditEvent
+}
+
 type Factory func(*testing.T) Repository
 
 func Run(t *testing.T, newRepository Factory) {
@@ -103,6 +108,39 @@ func RunCoreDurability(t *testing.T, open func() CoreRepository) {
 	}
 	if enabled, explicit := reopened.ProviderSetting("github"); !enabled || !explicit {
 		t.Fatalf("reopened provider setting: %v, %v", enabled, explicit)
+	}
+}
+
+func RunAudit(t *testing.T, newRepository func(*testing.T) AuditRepository) {
+	t.Helper()
+	t.Run("safe fields and chronological ordering", func(t *testing.T) {
+		r := newRepository(t)
+		first := &store.AuditEvent{ID: "first", Type: "login", Outcome: "failure", Timestamp: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC), ActorEmail: "person@example.com"}
+		second := &store.AuditEvent{ID: "second", Type: "login", Outcome: "success", Timestamp: first.Timestamp.Add(time.Second), ActorID: "user-1", Target: "target"}
+		for _, event := range []*store.AuditEvent{second, first} {
+			if err := r.CreateAuditEvent(event); err != nil {
+				t.Fatal(err)
+			}
+		}
+		got := r.ListAuditEvents()
+		if len(got) != 2 || got[0].ID != "first" || got[1].ID != "second" {
+			t.Fatalf("audit ordering = %#v, want chronological order", got)
+		}
+		if got[0].ActorEmail != first.ActorEmail || got[1].Target != second.Target {
+			t.Fatalf("audit fields were not retained: %#v", got)
+		}
+	})
+}
+
+func RunAuditDurability(t *testing.T, open func() AuditRepository) {
+	t.Helper()
+	event := &store.AuditEvent{ID: "durable-audit", Type: "admin.set_provider", Outcome: "success", Timestamp: time.Date(2026, 2, 3, 4, 5, 6, 0, time.UTC), ActorID: "admin", Target: "github", ClientIP: "198.51.100.1:1234", UserAgent: "contract"}
+	if err := open().CreateAuditEvent(event); err != nil {
+		t.Fatal(err)
+	}
+	got := open().ListAuditEvents()
+	if len(got) != 1 || *got[0] != *event {
+		t.Fatalf("reopened audit events = %#v, want %#v", got, event)
 	}
 }
 
