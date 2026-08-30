@@ -43,7 +43,7 @@ func main() {
 	}()
 
 	authSvc := &auth.Service{Store: s, Secure: secureCookies}
-	api := httpapi.New(authSvc, s, s, s, s, s)
+	api := httpapi.New(authSvc, s, s, s, s, s, s)
 	facebookClientID := os.Getenv("AUTH_FACEBOOK_CLIENT_ID")
 	facebookClientSecret := os.Getenv("AUTH_FACEBOOK_CLIENT_SECRET")
 	facebookRedirectURL := getenv("AUTH_FACEBOOK_REDIRECT_URL", "http://localhost:8090/api/auth/facebook/callback")

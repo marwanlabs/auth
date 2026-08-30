@@ -26,12 +26,8 @@ type API struct {
 	Social     *socialauth.Service
 }
 
-func New(a *auth.Service, users UserRepository, sessions SessionRepository, reset ResetTokenRepository, providerDB ProviderRepository, social socialauth.Repository) *API {
-	api := &API{Auth: a, Users: users, Sessions: sessions, Reset: reset, ProviderDB: providerDB, Providers: make(map[string]providers.Provider), Social: socialauth.New(social)}
-	if audit, ok := users.(store.AuditRepository); ok {
-		api.Audit = audit
-	}
-	return api
+func New(a *auth.Service, users UserRepository, sessions SessionRepository, reset ResetTokenRepository, providerDB ProviderRepository, social socialauth.Repository, audit store.AuditRepository) *API {
+	return &API{Auth: a, Users: users, Sessions: sessions, Reset: reset, ProviderDB: providerDB, Audit: audit, Providers: make(map[string]providers.Provider), Social: socialauth.New(social)}
 }
 
 // Register attaches all routes to mux.

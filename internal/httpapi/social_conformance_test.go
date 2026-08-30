@@ -37,7 +37,7 @@ func testConformanceAPI(t testing.TB) (*API, *store.Store) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return New(&auth.Service{Store: s}, s, s, s, s, s), s
+	return New(&auth.Service{Store: s}, s, s, s, s, s, s), s
 }
 
 func testMux(t testing.TB, provider providers.Provider) (*API, *http.ServeMux) {
