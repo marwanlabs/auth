@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Manage users</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="topbar">
+    <a class="brand" href="/dashboard.html">Your app</a>
+    <a class="admin-link" href="/dashboard.html">Dashboard</a>
+  </div>
+  <main class="container">
+    <div class="panel">
+      <h1>Manage users</h1>
+      <p class="subtitle">View accounts, change roles, and temporarily disable access.</p>
+      <label for="user-search">Search by email</label>
+      <input id="user-search" type="search" placeholder="name@example.com">
+      <div class="error-box" id="error-box" hidden></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Email</th><th>Role</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
+          <tbody id="users-body"><tr><td colspan="5">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+  <script src="/js/api.js"></script>
+  <script>
+    const body = document.getElementById('users-body');
+    const search = document.getElementById('user-search');
+    const errorBox = document.getElementById('error-box');
+    let users = [];
+
+    function render() {
+      const query = search.value.trim().toLowerCase();
+      const visible = users.filter(u => u.email.includes(query));
+      body.innerHTML = '';
+      if (!visible.length) { body.innerHTML = '<tr><td colspan="5">No users found.</td></tr>'; return; }
+      for (const user of visible) {
+        const row = document.createElement('tr');
+        const email = document.createElement('td'); email.textContent = user.email;
+        const role = document.createElement('td');
+        const select = document.createElement('select');
+        for (const option of ['user', 'admin']) select.add(new Option(option, option, false, user.role === option));
+        select.disabled = user.id === window.currentAdminID;
+        select.addEventListener('change', () => updateRole(user, select.value));
+        role.appendChild(select);
+        const status = document.createElement('td'); status.textContent = user.disabled ? 'Disabled' : 'Active';
+        const created = document.createElement('td'); created.textContent = new Date(user.created_at).toLocaleString();
+        const actions = document.createElement('td');
+        const button = document.createElement('button');
+        button.className = user.disabled ? 'secondary small-button' : 'danger-link';
+        button.textContent = user.disabled ? 'Enable' : 'Disable';
+        button.disabled = user.id === window.currentAdminID;
+        button.addEventListener('click', () => updateStatus(user, !user.disabled));
+        actions.appendChild(button);
+        row.append(email, role, status, created, actions);
+        body.appendChild(row);
+      }
+    }
+    async function updateRole(user, role) {
+      if (!confirm(`Change ${user.email} to ${role}?`)) { render(); return; }
+      try { await Auth.changeUserRole(user.id, role); await load(); } catch (err) { showError(errorBox, err); render(); }
+    }
+    async function updateStatus(user, disabled) {
+      const action = disabled ? 'disable' : 'enable';
+      if (!confirm(`${action[0].toUpperCase() + action.slice(1)} ${user.email}?`)) return;
+      try { await Auth.changeUserStatus(user.id, disabled); await load(); } catch (err) { showError(errorBox, err); }
+    }
+    async function load() {
+      try { users = await Auth.listUsers(); errorBox.hidden = true; render(); }
+      catch (_) { window.location.href = '/dashboard.html'; }
+    }
+    search.addEventListener('input', render);
+    (async () => {
+      try {
+        const me = await Auth.me();
+        if (me.role !== 'admin') { window.location.href = '/dashboard.html'; return; }
+        window.currentAdminID = me.id;
+        await load();
+      } catch (_) { window.location.href = '/login.html'; }
+    })();
+  </script>
+</body>
+</html>

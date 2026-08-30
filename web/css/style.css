@@ -61,7 +61,8 @@ label {
 
 input[type="email"],
 input[type="password"],
-input[type="text"] {
+input[type="text"],
+input[type="search"] {
   width: 100%;
   padding: 10px 12px;
   border: 1px solid var(--border);
@@ -139,6 +140,8 @@ button.danger-link {
 }
 
 .topbar .brand { font-weight: 600; }
+.topbar a { color: var(--accent); text-decoration: none; }
+.topbar .admin-link { margin-left: auto; margin-right: 16px; font-size: 13px; }
 
 main.container {
   max-width: 640px;
@@ -177,3 +180,11 @@ main.container {
   background: var(--bg);
   color: var(--text-muted);
 }
+
+/* admin layout */
+.table-wrap { overflow-x: auto; margin-top: 20px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 12px 8px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+th { color: var(--text-muted); font-size: 12px; font-weight: 600; }
+td select { padding: 6px 8px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.small-button { width: auto; padding: 6px 10px; margin: 0; font-size: 12px; }

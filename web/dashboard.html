@@ -48,6 +48,14 @@
       document.getElementById('profile-email').textContent = user.email;
       document.getElementById('profile-role').textContent = user.role;
 
+      if (user.role === 'admin') {
+        const adminLink = document.createElement('a');
+        adminLink.href = '/admin.html';
+        adminLink.textContent = 'Manage users';
+        adminLink.className = 'admin-link';
+        document.querySelector('.topbar').insertBefore(adminLink, document.getElementById('logout-btn'));
+      }
+
       document.getElementById('logout-btn').addEventListener('click', async () => {
         await Auth.logout();
         window.location.href = '/login.html';

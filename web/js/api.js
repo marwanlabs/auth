@@ -36,6 +36,11 @@ const Auth = {
   requestReset: (email) => api('/api/password-reset/request', { method: 'POST', body: JSON.stringify({ email }) }),
   confirmReset: (token, new_password) =>
     api('/api/password-reset/confirm', { method: 'POST', body: JSON.stringify({ token, new_password }) }),
+  listUsers: () => api('/api/admin/users'),
+  changeUserRole: (user_id, role) =>
+    api('/api/admin/users/role', { method: 'POST', body: JSON.stringify({ user_id, role }) }),
+  changeUserStatus: (user_id, disabled) =>
+    api('/api/admin/users/status', { method: 'POST', body: JSON.stringify({ user_id, disabled }) }),
 };
 
 // Redirects an unauthenticated visitor to the login page. Call at the top

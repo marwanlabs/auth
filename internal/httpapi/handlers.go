@@ -38,6 +38,8 @@ func (api *API) Register(mux *http.ServeMux) {
 
 	// Example of an admin-only route — extend as your app needs.
 	mux.HandleFunc("GET /api/admin/users", api.Auth.RequireRole(store.RoleAdmin, api.handleListUsers))
+	mux.HandleFunc("POST /api/admin/users/role", api.Auth.RequireRole(store.RoleAdmin, api.handleChangeUserRole))
+	mux.HandleFunc("POST /api/admin/users/status", api.Auth.RequireRole(store.RoleAdmin, api.handleChangeUserStatus))
 }
 
 func clientIPKey(r *http.Request) string {
@@ -244,6 +246,16 @@ type revokeRequest struct {
 	SessionID string `json:"session_id"`
 }
 
+type userRoleRequest struct {
+	UserID string     `json:"user_id"`
+	Role   store.Role `json:"role"`
+}
+
+type userStatusRequest struct {
+	UserID   string `json:"user_id"`
+	Disabled bool   `json:"disabled"`
+}
+
 func (api *API) handleRevokeSession(w http.ResponseWriter, r *http.Request) {
 	u := auth.UserFromContext(r.Context())
 	var req revokeRequest
@@ -345,10 +357,68 @@ func (api *API) handleResetConfirm(w http.ResponseWriter, r *http.Request) {
 // --- Admin example ---
 
 func (api *API) handleListUsers(w http.ResponseWriter, r *http.Request) {
-	// In a real app you'd add store.ListUsers(); omitted here to keep the
-	// store's public surface small. This handler demonstrates the
-	// RequireRole middleware wiring.
-	writeJSON(w, http.StatusOK, map[string]string{"note": "wire up store.ListUsers() for a real admin panel"})
+	users := api.Store.ListUsers()
+	out := make([]publicUserView, 0, len(users))
+	for _, u := range users {
+		out = append(out, publicUser(u))
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (api *API) handleChangeUserRole(w http.ResponseWriter, r *http.Request) {
+	admin := auth.UserFromContext(r.Context())
+	var req userRoleRequest
+	if err := decodeJSON(r, &req); err != nil || (req.Role != store.RoleAdmin && req.Role != store.RoleUser) {
+		writeError(w, http.StatusBadRequest, "invalid role request")
+		return
+	}
+	if req.UserID == admin.ID {
+		writeError(w, http.StatusBadRequest, "you cannot change your own role")
+		return
+	}
+	u, err := api.Store.GetUserByID(req.UserID)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "user not found")
+		return
+	}
+	if u.Role == store.RoleAdmin && req.Role == store.RoleUser && api.Store.CountAdmins() == 1 {
+		writeError(w, http.StatusBadRequest, "cannot remove the last active administrator")
+		return
+	}
+	u.Role = req.Role
+	if err := api.Store.UpdateUser(u); err != nil {
+		writeError(w, http.StatusInternalServerError, "could not update user role")
+		return
+	}
+	writeJSON(w, http.StatusOK, publicUser(u))
+}
+
+func (api *API) handleChangeUserStatus(w http.ResponseWriter, r *http.Request) {
+	admin := auth.UserFromContext(r.Context())
+	var req userStatusRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid status request")
+		return
+	}
+	if req.UserID == admin.ID {
+		writeError(w, http.StatusBadRequest, "you cannot disable your own account")
+		return
+	}
+	u, err := api.Store.GetUserByID(req.UserID)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "user not found")
+		return
+	}
+	if req.Disabled && u.Role == store.RoleAdmin && !u.Disabled && api.Store.CountAdmins() == 1 {
+		writeError(w, http.StatusBadRequest, "cannot disable the last active administrator")
+		return
+	}
+	u.Disabled = req.Disabled
+	if err := api.Store.UpdateUser(u); err != nil {
+		writeError(w, http.StatusInternalServerError, "could not update user status")
+		return
+	}
+	writeJSON(w, http.StatusOK, publicUser(u))
 }
 
 // --- shared view/id helpers ---
@@ -357,11 +427,12 @@ type publicUserView struct {
 	ID        string    `json:"id"`
 	Email     string    `json:"email"`
 	Role      string    `json:"role"`
+	Disabled  bool      `json:"disabled"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
 func publicUser(u *store.User) publicUserView {
-	return publicUserView{ID: u.ID, Email: u.Email, Role: string(u.Role), CreatedAt: u.CreatedAt}
+	return publicUserView{ID: u.ID, Email: u.Email, Role: string(u.Role), Disabled: u.Disabled, CreatedAt: u.CreatedAt}
 }
 
 func mustID() string {

@@ -159,7 +159,7 @@ func (s *Service) authenticate(r *http.Request) (*store.User, string, bool) {
 		return nil, "", false
 	}
 	user, err := s.Store.GetUserByID(sess.UserID)
-	if err != nil {
+	if err != nil || user.Disabled {
 		return nil, "", false
 	}
 	return user, sess.ID, true

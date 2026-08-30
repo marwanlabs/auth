@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 	"time"
 )
@@ -27,6 +28,7 @@ type User struct {
 	Email        string    `json:"email"` // stored lowercased
 	PasswordHash string    `json:"password_hash"`
 	Role         Role      `json:"role"`
+	Disabled     bool      `json:"disabled"`
 	CreatedAt    time.Time `json:"created_at"`
 }
 
@@ -51,8 +53,8 @@ type ResetToken struct {
 
 type data struct {
 	Users       map[string]*User       `json:"users"`        // keyed by user ID
-	Sessions    map[string]*Session    `json:"sessions"`      // keyed by session ID
-	ResetTokens map[string]*ResetToken `json:"reset_tokens"`  // keyed by token hash
+	Sessions    map[string]*Session    `json:"sessions"`     // keyed by session ID
+	ResetTokens map[string]*ResetToken `json:"reset_tokens"` // keyed by token hash
 }
 
 type Store struct {
@@ -179,6 +181,31 @@ func (s *Store) CountUsers() int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return len(s.d.Users)
+}
+
+// ListUsers returns all users in stable email order for admin views.
+func (s *Store) ListUsers() []*User {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	users := make([]*User, 0, len(s.d.Users))
+	for _, u := range s.d.Users {
+		users = append(users, u)
+	}
+	sort.Slice(users, func(i, j int) bool { return users[i].Email < users[j].Email })
+	return users
+}
+
+// CountAdmins returns the number of active administrator accounts.
+func (s *Store) CountAdmins() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	count := 0
+	for _, u := range s.d.Users {
+		if u.Role == RoleAdmin && !u.Disabled {
+			count++
+		}
+	}
+	return count
 }
 
 // --- Sessions ---
