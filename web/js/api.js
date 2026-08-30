@@ -60,3 +60,29 @@ function showError(el, err) {
   el.textContent = err.message || String(err);
   el.hidden = false;
 }
+
+// Shared light/dark theme toggle for every page.
+(function setupTheme() {
+  const saved = localStorage.getItem('authserver-theme');
+  const theme = saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  document.documentElement.dataset.theme = theme;
+
+  function addToggle() {
+    if (!document.body || document.querySelector('.theme-toggle')) return;
+    const button = document.createElement('button');
+    button.className = 'theme-toggle';
+    button.type = 'button';
+    button.setAttribute('aria-label', theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode');
+    button.addEventListener('click', () => {
+      const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+      document.documentElement.dataset.theme = next;
+      localStorage.setItem('authserver-theme', next);
+      button.textContent = next === 'dark' ? '☀' : '☾';
+      button.setAttribute('aria-label', next === 'dark' ? 'Switch to light mode' : 'Switch to dark mode');
+    });
+    button.textContent = theme === 'dark' ? '☀' : '☾';
+    document.body.appendChild(button);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', addToggle);
+  else addToggle();
+})();
