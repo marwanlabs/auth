@@ -40,6 +40,9 @@ func TestAdminProviderListIncludesSafeReadinessDiagnostics(t *testing.T) {
 	if strings.Contains(rec.Body.String(), "secret-value") {
 		t.Fatal("response exposed a provider secret")
 	}
+	if len(github.SetupGuidance) == 0 || !strings.Contains(strings.Join(github.SetupGuidance, " "), "AUTH_GITHUB") {
+		t.Fatalf("missing provider-specific setup guidance: %#v", github.SetupGuidance)
+	}
 }
 
 func TestEnableIncompleteProviderReturnsActionableSafeError(t *testing.T) {
@@ -54,8 +57,32 @@ func TestEnableIncompleteProviderReturnsActionableSafeError(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
 	}
-	if body := rec.Body.String(); !strings.Contains(body, "client_id") || !strings.Contains(body, "redirect_url") || strings.Contains(body, "secret-value") {
+	body := rec.Body.String()
+	if !strings.Contains(body, "client_id") || !strings.Contains(body, "redirect_url") || strings.Contains(body, "secret-value") {
 		t.Fatalf("unexpected validation response: %s", body)
+	}
+	if !strings.Contains(body, `"code":"unavailable_configuration"`) {
+		t.Fatalf("missing structured configuration error: %s", body)
+	}
+}
+
+func TestProviderMutationUsesStructuredRequestAndDisableResponses(t *testing.T) {
+	api, cleanup := testProviderAPI(t)
+	defer cleanup()
+	api.Providers["github"] = providers.NewGitHub("client", "secret", "http://localhost/callback")
+
+	invalid := httptest.NewRequest(http.MethodPost, "/api/admin/providers", strings.NewReader(`{"provider":"unknown","enabled":true}`))
+	invalidRec := httptest.NewRecorder()
+	api.handleSetProvider(invalidRec, invalid)
+	if invalidRec.Code != http.StatusBadRequest || !strings.Contains(invalidRec.Body.String(), `"code":"invalid_request"`) {
+		t.Fatalf("invalid provider response = %d %s", invalidRec.Code, invalidRec.Body.String())
+	}
+
+	disable := httptest.NewRequest(http.MethodPost, "/api/admin/providers", strings.NewReader(`{"provider":"github","enabled":false}`))
+	disableRec := httptest.NewRecorder()
+	api.handleSetProvider(disableRec, disable)
+	if disableRec.Code != http.StatusOK || !strings.Contains(disableRec.Body.String(), `"enabled":false`) {
+		t.Fatalf("disable response = %d %s", disableRec.Code, disableRec.Body.String())
 	}
 }
 

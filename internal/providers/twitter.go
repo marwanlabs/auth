@@ -30,7 +30,7 @@ func (p *twitterProvider) Name() string { return "Twitter/X" }
 func (p *twitterProvider) Configured() bool {
 	return p.config.ClientID != "" && p.config.ClientSecret != "" && p.config.RedirectURL != ""
 }
-func (p *twitterProvider) Readiness() Readiness { return oauthReadiness(p.config) }
+func (p *twitterProvider) Readiness() Readiness { return oauthReadiness(p.config, p.ID()) }
 func (p *twitterProvider) AuthorizationURL(state string) string {
 	return p.AuthorizationURLWithVerifier(state, state)
 }

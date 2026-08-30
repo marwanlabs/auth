@@ -107,6 +107,9 @@
       client_id: 'Client ID',
       client_secret: 'Client secret',
       redirect_url: 'Callback URL',
+      authorization_endpoint: 'Authorization endpoint',
+      token_endpoint: 'Token endpoint',
+      profile_endpoint: 'Profile endpoint',
       issuer: 'Issuer URL',
     };
     const REQUIREMENT_ENV = {
@@ -137,20 +140,18 @@
     }
 
     function providerMissingEnv(provider, requirement) {
-      const suffix = REQUIREMENT_ENV[requirement] || requirement.replace(/_/g, '-').toUpperCase();
+      const suffix = REQUIREMENT_ENV[requirement] || requirement.replace(/-/g, '_').toUpperCase();
       return (PROVIDER_ENV[provider.id] || 'AUTH') + '_' + suffix;
     }
 
     function buildMissingList(provider) {
       const missing = document.createElement('div');
       missing.className = 'provider-missing';
-      const note = document.createElement('p');
-      note.append('Add the following environment variables, then restart the server (see the ');
-      const readme = document.createElement('a');
-      readme.href = 'https://github.com/marwanlabs/auth/blob/main/README.md';
-      readme.textContent = 'README';
-      note.append(readme, '):');
-      missing.appendChild(note);
+      for (const guidance of provider.setup_guidance || []) {
+        const note = document.createElement('p');
+        note.textContent = guidance;
+        missing.appendChild(note);
+      }
       const ul = document.createElement('ul');
       for (const requirement of provider.missing_requirements || []) {
         const li = document.createElement('li');
@@ -196,7 +197,9 @@
         hint.textContent = state.hint;
         info.append(nameLine, hint);
         if (provider.missing_requirements && provider.missing_requirements.length) {
-          info.appendChild(buildMissingList(provider));
+          const guidance = buildMissingList(provider);
+          guidance.id = 'provider-guidance-' + provider.id;
+          info.appendChild(guidance);
         }
         const feedback = document.createElement('p');
         feedback.className = 'provider-feedback';
@@ -209,7 +212,10 @@
         toggle.textContent = provider.enabled ? 'Enabled' : 'Disabled';
         toggle.disabled = !provider.ready;
         toggle.setAttribute('aria-pressed', String(provider.enabled));
-        if (!provider.ready) toggle.title = 'Configure the provider, then enable it';
+        if (!provider.ready) {
+          toggle.title = 'Configure the provider, then enable it';
+          toggle.setAttribute('aria-describedby', 'provider-guidance-' + provider.id);
+        }
         toggle.addEventListener('click', () => toggleProvider(provider, toggle, feedback, hint, badge));
         row.appendChild(toggle);
         providersList.appendChild(row);

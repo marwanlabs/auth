@@ -14,6 +14,7 @@ type providerView struct {
 	Configured          bool     `json:"configured"`
 	Ready               bool     `json:"ready"`
 	MissingRequirements []string `json:"missing_requirements"`
+	SetupGuidance       []string `json:"setup_guidance"`
 	Enabled             bool     `json:"enabled"`
 }
 
@@ -42,7 +43,7 @@ func (api *API) handleListProviders(w http.ResponseWriter, r *http.Request) {
 			enabled = configured && (item.ID == "google" || item.ID == "facebook")
 		}
 		if admin || enabled {
-			out = append(out, providerView{ID: item.ID, Name: item.Name, Configured: configured, Ready: readiness.Ready, MissingRequirements: readiness.Missing, Enabled: enabled && configured})
+			out = append(out, providerView{ID: item.ID, Name: item.Name, Configured: configured, Ready: readiness.Ready, MissingRequirements: readiness.Missing, SetupGuidance: readiness.Guidance, Enabled: enabled && configured})
 		}
 	}
 	writeJSON(w, http.StatusOK, out)
@@ -56,18 +57,18 @@ type providerUpdateRequest struct {
 func (api *API) handleSetProvider(w http.ResponseWriter, r *http.Request) {
 	var req providerUpdateRequest
 	if err := decodeJSON(r, &req); err != nil || !isSupportedProvider(req.Provider) {
-		writeError(w, http.StatusBadRequest, "invalid provider")
+		writeProviderError(w, http.StatusBadRequest, "invalid_request", "invalid provider")
 		return
 	}
 	if req.Enabled {
 		readiness := api.providerReadiness(req.Provider)
 		if !readiness.Ready {
-			writeError(w, http.StatusBadRequest, "provider is not ready; missing requirements: "+strings.Join(readiness.Missing, ", "))
+			writeProviderError(w, http.StatusBadRequest, "unavailable_configuration", "provider is not ready; missing requirements: "+strings.Join(readiness.Missing, ", "))
 			return
 		}
 	}
 	if err := api.ProviderDB.SetProviderEnabled(req.Provider, req.Enabled); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not update provider")
+		writeProviderError(w, http.StatusInternalServerError, "persistence_failure", "could not update provider")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"enabled": req.Enabled})
@@ -89,7 +90,7 @@ func (api *API) providerConfigured(id string) bool {
 func (api *API) providerReadiness(id string) providers.Readiness {
 	provider, ok := api.Providers[id]
 	if !ok {
-		return providers.Readiness{Missing: []string{"provider configuration"}}
+		return providers.Readiness{Missing: []string{"provider configuration"}, Guidance: []string{"Configure this provider on the server, then restart the server."}}
 	}
 	if diagnostic, ok := provider.(providers.ReadinessProvider); ok {
 		return diagnostic.Readiness()
@@ -97,7 +98,7 @@ func (api *API) providerReadiness(id string) providers.Readiness {
 	if provider.Configured() {
 		return providers.Readiness{Ready: true, Missing: []string{}}
 	}
-	return providers.Readiness{Missing: []string{"provider configuration"}}
+	return providers.Readiness{Missing: []string{"provider configuration"}, Guidance: []string{"Configure this provider on the server, then restart the server."}}
 }
 
 func (api *API) providerEnabled(id string) bool {

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"golang.org/x/oauth2"
 )
@@ -22,8 +23,9 @@ type Identity struct {
 // Readiness contains only configuration facts that are safe to show to an
 // administrator. Missing names identify inputs, never their values.
 type Readiness struct {
-	Ready   bool
-	Missing []string
+	Ready    bool
+	Missing  []string
+	Guidance []string
 }
 
 type Provider interface {
@@ -40,7 +42,7 @@ type ReadinessProvider interface {
 	Readiness() Readiness
 }
 
-func oauthReadiness(config oauth2.Config) Readiness {
+func oauthReadiness(config oauth2.Config, providerID string, profileConfigured ...bool) Readiness {
 	missing := make([]string, 0, 3)
 	if config.ClientID == "" {
 		missing = append(missing, "client_id")
@@ -51,7 +53,27 @@ func oauthReadiness(config oauth2.Config) Readiness {
 	if config.RedirectURL == "" {
 		missing = append(missing, "redirect_url")
 	}
-	return Readiness{Ready: len(missing) == 0, Missing: missing}
+	if config.Endpoint.AuthURL == "" {
+		missing = append(missing, "authorization_endpoint")
+	}
+	if config.Endpoint.TokenURL == "" {
+		missing = append(missing, "token_endpoint")
+	}
+	if len(profileConfigured) > 0 && !profileConfigured[0] {
+		missing = append(missing, "profile_endpoint")
+	}
+	return Readiness{Ready: len(missing) == 0, Missing: missing, Guidance: setupGuidance(providerID)}
+}
+
+func setupGuidance(providerID string) []string {
+	prefix := "AUTH_" + strings.ToUpper(providerID)
+	if providerID == "oidc" {
+		prefix = "AUTH_OIDC"
+	}
+	return []string{
+		"Set " + prefix + "_CLIENT_ID and " + prefix + "_CLIENT_SECRET on the server.",
+		"Register " + prefix + "_REDIRECT_URL as the provider callback URL, then restart the server.",
+	}
 }
 
 // StatefulProvider is implemented by providers whose token exchange also
@@ -81,7 +103,9 @@ func (p *oauthAdapter) Name() string { return p.name }
 func (p *oauthAdapter) Configured() bool {
 	return p.config.ClientID != "" && p.config.ClientSecret != "" && p.config.RedirectURL != "" && p.config.Endpoint.AuthURL != "" && p.profileURL != ""
 }
-func (p *oauthAdapter) Readiness() Readiness { return oauthReadiness(p.config) }
+func (p *oauthAdapter) Readiness() Readiness {
+	return oauthReadiness(p.config, p.id, p.profileURL != "")
+}
 func (p *oauthAdapter) AuthorizationURL(state string) string {
 	return p.AuthorizationURLWithVerifier(state, state)
 }

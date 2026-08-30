@@ -42,7 +42,11 @@ func (p *oidcProvider) Readiness() Readiness {
 	if p.redirectURL == "" {
 		missing = append(missing, "redirect_url")
 	}
-	return Readiness{Ready: len(missing) == 0, Missing: missing}
+	readiness := Readiness{Ready: len(missing) == 0, Missing: missing, Guidance: setupGuidance("oidc")}
+	if p.issuer == "" {
+		readiness.Guidance = append(readiness.Guidance, "Set AUTH_OIDC_ISSUER to the issuer URL used for discovery.")
+	}
+	return readiness
 }
 func (p *oidcProvider) AuthorizationURL(state string) string {
 	return p.AuthorizationURLWithVerifier(state, state)

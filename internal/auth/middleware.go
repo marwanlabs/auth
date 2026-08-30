@@ -110,12 +110,12 @@ func (s *Service) RequireAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user, sessID, ok := s.authenticate(r)
 		if !ok {
-			http.Error(w, `{"error":"not authenticated"}`, http.StatusUnauthorized)
+			writeAuthError(w, http.StatusUnauthorized, "not_authenticated", "not authenticated")
 			return
 		}
 		if r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions {
 			if !s.validCSRF(r) {
-				http.Error(w, `{"error":"invalid csrf token"}`, http.StatusForbidden)
+				writeAuthError(w, http.StatusForbidden, "invalid_csrf", "invalid csrf token")
 				return
 			}
 		}
@@ -130,11 +130,17 @@ func (s *Service) RequireRole(role store.Role, next http.HandlerFunc) http.Handl
 	return s.RequireAuth(func(w http.ResponseWriter, r *http.Request) {
 		u := UserFromContext(r.Context())
 		if u == nil || u.Role != role {
-			http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+			writeAuthError(w, http.StatusForbidden, "forbidden", "forbidden")
 			return
 		}
 		next(w, r)
 	})
+}
+
+func writeAuthError(w http.ResponseWriter, status int, code, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_, _ = w.Write([]byte(`{"code":"` + code + `","error":"` + message + `"}`))
 }
 
 // authenticate looks up the session referenced by the request's cookie.

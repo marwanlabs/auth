@@ -206,6 +206,10 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
 }
 
+func writeProviderError(w http.ResponseWriter, status int, code, msg string) {
+	writeJSON(w, status, map[string]string{"code": code, "error": msg})
+}
+
 func decodeJSON(r *http.Request, v any) error {
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
