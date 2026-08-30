@@ -26,10 +26,11 @@
         </table>
       </div>
     </div>
-    <div class="panel provider-settings">
+    <div class="panel provider-panel">
       <h2>Sign-in providers</h2>
-      <p class="subtitle">Choose which configured social providers users can use. Credentials stay on the server.</p>
-      <div id="providers-list"><p>Loading…</p></div>
+      <p class="subtitle">Control which social providers users can sign in with and see what still needs configuring. Credentials never leave the server.</p>
+      <div class="error-box" id="providers-error" hidden></div>
+      <div id="providers-list" aria-live="polite"><p>Loading…</p></div>
     </div>
   </main>
   <script src="/js/api.js"></script>
@@ -96,23 +97,157 @@
       try { users = await Auth.listUsers(); errorBox.hidden = true; render(); }
       catch (_) { window.location.href = '/dashboard.html'; }
     }
-    async function loadProviders() {
-      const list = document.getElementById('providers-list');
-      try {
-        const providers = await Auth.listAdminProviders();
-        list.innerHTML = '';
-        for (const provider of providers) {
-          const row = document.createElement('div'); row.className = 'provider-row';
-          const info = document.createElement('div');
-          const name = document.createElement('strong'); name.textContent = provider.name;
-          const state = document.createElement('small'); state.textContent = provider.configured ? 'Credentials configured' : 'Credentials missing';
-          info.append(name, state);
-          const toggle = document.createElement('button'); toggle.className = 'provider-toggle secondary'; toggle.textContent = provider.enabled ? 'Enabled' : 'Disabled';
-          toggle.disabled = !provider.configured;
-          toggle.addEventListener('click', async () => { toggle.disabled = true; try { await Auth.setProvider(provider.id, !provider.enabled); await loadProviders(); } catch (err) { showError(errorBox, err); toggle.disabled = false; } });
-          row.append(info, toggle); list.appendChild(row);
+    const PROVIDER_ENV = {
+      google: 'AUTH_GOOGLE', facebook: 'AUTH_FACEBOOK', github: 'AUTH_GITHUB',
+      microsoft: 'AUTH_MICROSOFT', apple: 'AUTH_APPLE', gitlab: 'AUTH_GITLAB',
+      discord: 'AUTH_DISCORD', linkedin: 'AUTH_LINKEDIN', twitter: 'AUTH_TWITTER',
+      oidc: 'AUTH_OIDC',
+    };
+    const REQUIREMENT_LABEL = {
+      client_id: 'Client ID',
+      client_secret: 'Client secret',
+      redirect_url: 'Callback URL',
+      issuer: 'Issuer URL',
+    };
+    const REQUIREMENT_ENV = {
+      client_id: 'CLIENT_ID',
+      client_secret: 'CLIENT_SECRET',
+      redirect_url: 'REDIRECT_URL',
+      issuer: 'ISSUER',
+    };
+    const providersList = document.getElementById('providers-list');
+    const providersError = document.getElementById('providers-error');
+    let providers = [];
+
+    function providerState(provider) {
+      if (provider.ready) {
+        return {
+          cls: 'ready',
+          label: 'Ready',
+          hint: provider.enabled
+            ? 'Enabled · users can sign in with it now'
+            : 'Configured · enable below to offer it on the sign-in page',
+        };
+      }
+      return {
+        cls: 'incomplete',
+        label: 'Incomplete',
+        hint: 'Not ready yet · add the missing configuration below to enable',
+      };
+    }
+
+    function providerMissingEnv(provider, requirement) {
+      const suffix = REQUIREMENT_ENV[requirement] || requirement.replace(/_/g, '-').toUpperCase();
+      return (PROVIDER_ENV[provider.id] || 'AUTH') + '_' + suffix;
+    }
+
+    function buildMissingList(provider) {
+      const missing = document.createElement('div');
+      missing.className = 'provider-missing';
+      const note = document.createElement('p');
+      note.append('Add the following environment variables, then restart the server (see the ');
+      const readme = document.createElement('a');
+      readme.href = 'https://github.com/marwanlabs/auth/blob/main/README.md';
+      readme.textContent = 'README';
+      note.append(readme, '):');
+      missing.appendChild(note);
+      const ul = document.createElement('ul');
+      for (const requirement of provider.missing_requirements || []) {
+        const li = document.createElement('li');
+        li.append((REQUIREMENT_LABEL[requirement] || requirement) + ': ');
+        const env = document.createElement('code');
+        env.textContent = providerMissingEnv(provider, requirement);
+        li.appendChild(env);
+        ul.appendChild(li);
+      }
+      missing.appendChild(ul);
+      return missing;
+    }
+
+    function setFeedback(el, message, kind) {
+      el.textContent = message;
+      el.hidden = false;
+      el.setAttribute('role', kind === 'error' ? 'alert' : 'status');
+      el.classList.toggle('error', kind === 'error');
+      el.classList.toggle('success', kind === 'success');
+    }
+
+    function renderProviders() {
+      providersList.innerHTML = '';
+      if (!providers.length) {
+        providersList.textContent = 'No providers are configured.';
+        return;
+      }
+      for (const provider of providers) {
+        const state = providerState(provider);
+        const row = document.createElement('div');
+        row.className = 'provider-row';
+        const info = document.createElement('div');
+        info.className = 'provider-info';
+        const nameLine = document.createElement('div');
+        nameLine.className = 'provider-name-line';
+        const name = document.createElement('strong');
+        name.textContent = provider.name;
+        const badge = document.createElement('span');
+        badge.className = 'provider-state ' + state.cls;
+        badge.textContent = state.label;
+        nameLine.append(name, badge);
+        const hint = document.createElement('small');
+        hint.textContent = state.hint;
+        info.append(nameLine, hint);
+        if (provider.missing_requirements && provider.missing_requirements.length) {
+          info.appendChild(buildMissingList(provider));
         }
-      } catch (err) { showError(errorBox, err); }
+        const feedback = document.createElement('p');
+        feedback.className = 'provider-feedback';
+        feedback.hidden = true;
+        info.appendChild(feedback);
+        row.appendChild(info);
+        const toggle = document.createElement('button');
+        toggle.className = 'provider-toggle secondary';
+        toggle.type = 'button';
+        toggle.textContent = provider.enabled ? 'Enabled' : 'Disabled';
+        toggle.disabled = !provider.ready;
+        toggle.setAttribute('aria-pressed', String(provider.enabled));
+        if (!provider.ready) toggle.title = 'Configure the provider, then enable it';
+        toggle.addEventListener('click', () => toggleProvider(provider, toggle, feedback, hint, badge));
+        row.appendChild(toggle);
+        providersList.appendChild(row);
+      }
+    }
+
+    async function toggleProvider(provider, toggle, feedback, hint, badge) {
+      const next = !provider.enabled;
+      toggle.disabled = true;
+      toggle.setAttribute('aria-busy', 'true');
+      toggle.textContent = next ? 'Enabling…' : 'Disabling…';
+      try {
+        const result = await Auth.setProvider(provider.id, next);
+        provider.enabled = result.enabled;
+        const state = providerState(provider);
+        hint.textContent = state.hint;
+        badge.textContent = state.label;
+        toggle.textContent = provider.enabled ? 'Enabled' : 'Disabled';
+        toggle.setAttribute('aria-pressed', String(provider.enabled));
+        setFeedback(feedback, provider.name + (provider.enabled ? ' enabled' : ' disabled'), 'success');
+      } catch (err) {
+        toggle.textContent = provider.enabled ? 'Enabled' : 'Disabled';
+        setFeedback(feedback, err.message || String(err), 'error');
+      } finally {
+        toggle.disabled = false;
+        toggle.removeAttribute('aria-busy');
+      }
+    }
+
+    async function loadProviders() {
+      try {
+        providers = await Auth.listAdminProviders();
+        providersError.hidden = true;
+        renderProviders();
+      } catch (err) {
+        providersList.innerHTML = '<p>Could not load providers.</p>';
+        showError(providersError, err);
+      }
     }
     search.addEventListener('input', render);
     (async () => {
