@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"os"
@@ -10,6 +11,7 @@ import (
 
 	"authserver/internal/auth"
 	"authserver/internal/httpapi"
+	"authserver/internal/pg"
 	"authserver/internal/providers"
 	"authserver/internal/store"
 )
@@ -18,6 +20,33 @@ func main() {
 	dataPath := getenv("AUTH_DATA_FILE", "data/store.json")
 	addr := getenv("AUTH_ADDR", ":8090")
 	secureCookies := getenv("AUTH_SECURE_COOKIES", "false") == "true"
+
+	// PostgreSQL runtime foundation (optional): when AUTH_DATABASE_URL is
+	// set, validate the configuration, connect, and apply schema migrations
+	// before accepting any traffic. Any failure here is fatal and reported
+	// without credentials. The JSON-file store stays in use until the store
+	// cutover (issue #19).
+	dbCfg, dbCfgErr := pg.ConfigFromEnv(os.Getenv)
+	if dbCfgErr != nil {
+		log.Fatalf("postgres configuration: %v", dbCfgErr)
+	}
+	if dbCfg != nil {
+		connectCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		pgDB, connectErr := pg.Connect(connectCtx, dbCfg)
+		cancel()
+		if connectErr != nil {
+			log.Fatalf("postgres connection: %v", connectErr)
+		}
+		defer pgDB.Close()
+		migrateCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		version, migrateErr := pg.Migrate(migrateCtx, pgDB)
+		cancel()
+		if migrateErr != nil {
+			log.Fatalf("postgres migration: %v", migrateErr)
+		}
+		log.Printf("postgres ready: schema version %d", version)
+	}
+
 	googleClientID := os.Getenv("AUTH_GOOGLE_CLIENT_ID")
 	googleClientSecret := os.Getenv("AUTH_GOOGLE_CLIENT_SECRET")
 	googleRedirectURL := getenv("AUTH_GOOGLE_REDIRECT_URL", "http://localhost:8090/api/auth/google/callback")

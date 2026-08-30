@@ -129,6 +129,34 @@ roles, disabled users, and sessions remain shared behavior.
 | `AUTH_ADDR`             | `:8090`            | Listen address                                            |
 | `AUTH_DATA_FILE`        | `data/store.json`  | Where user/session data is persisted                      |
 | `AUTH_SECURE_COOKIES`   | `false`            | Set to `true` once served over HTTPS (marks cookies Secure) |
+| `AUTH_DATABASE_URL`     | *(unset)*          | PostgreSQL connection string; when set the service validates it, connects, and applies schema migrations before serving. Credentials are never logged. |
+| `TEST_DATABASE_URL`     | *(unset)*          | Used by `go test` for the PostgreSQL integration environment; unset, those tests skip. |
+
+## PostgreSQL runtime foundation
+
+The service can run its persistence on PostgreSQL (currently a JSON-file store;
+the store cutover is a later ticket). When `AUTH_DATABASE_URL` is set the
+service, before accepting any traffic, validates the configuration, opens a
+connection pool, verifies the connection, and applies versioned schema
+migrations. Any configuration or connection failure is fatal at startup and is
+reported **without the connection string or its password**.
+
+Migrations live as embedded, versioned SQL files in
+`internal/pg/migrations/` and are applied on a single connection under a
+cluster-wide advisory lock, so runs are repeatable and concurrent instances
+never race a schema change. Once applied, a migration is recorded in the
+`schema_migrations` table and skipped on later runs.
+
+Run the PostgreSQL integration environment (repeatable schema initialization)
+against a real server with:
+
+```
+TEST_DATABASE_URL='postgres://authserver:PASSWORD@localhost:5432/authserver?sslmode=disable' \
+    go test ./internal/pg/ -run TestPostgresRepeatableInitialization -v
+```
+
+`TestPostgresRepeatableInitialization` skips cleanly when `TEST_DATABASE_URL`
+is unset, so `go test ./...` passes offline.
 
 ## What's included
 
