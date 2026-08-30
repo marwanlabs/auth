@@ -60,12 +60,31 @@ type ResetToken struct {
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
+// AuditEvent records an authentication outcome without request secrets.
+type AuditEvent struct {
+	ID         string    `json:"id"`
+	Type       string    `json:"type"`
+	Outcome    string    `json:"outcome"`
+	Timestamp  time.Time `json:"timestamp"`
+	ActorID    string    `json:"actor_id,omitempty"`
+	ActorEmail string    `json:"actor_email,omitempty"`
+	ClientIP   string    `json:"client_ip,omitempty"`
+	UserAgent  string    `json:"user_agent,omitempty"`
+}
+
+// AuditRepository is the persistence seam for authentication audit events.
+// Other stores can implement this interface without changing the handlers.
+type AuditRepository interface {
+	CreateAuditEvent(*AuditEvent) error
+}
+
 type data struct {
 	Users       map[string]*User           `json:"users"`             // keyed by user ID
 	Sessions    map[string]*Session        `json:"sessions"`          // keyed by session ID
 	ResetTokens map[string]*ResetToken     `json:"reset_tokens"`      // keyed by token hash
 	Identities  map[string]*SocialIdentity `json:"social_identities"` // keyed by identity ID
 	Providers   map[string]bool            `json:"enabled_providers"`
+	AuditEvents map[string]*AuditEvent     `json:"audit_events"` // keyed by event ID
 }
 
 type Store struct {
@@ -84,6 +103,7 @@ func Open(path string) (*Store, error) {
 			ResetTokens: make(map[string]*ResetToken),
 			Identities:  make(map[string]*SocialIdentity),
 			Providers:   make(map[string]bool),
+			AuditEvents: make(map[string]*AuditEvent),
 		},
 	}
 	raw, err := os.ReadFile(path)
@@ -113,6 +133,9 @@ func Open(path string) (*Store, error) {
 	}
 	if s.d.Providers == nil {
 		s.d.Providers = make(map[string]bool)
+	}
+	if s.d.AuditEvents == nil {
+		s.d.AuditEvents = make(map[string]*AuditEvent)
 	}
 	if err := s.migrateLegacyIdentities(); err != nil {
 		return nil, err
@@ -311,6 +334,29 @@ func (s *Store) SetProviderEnabled(provider string, enabled bool) error {
 	defer s.mu.Unlock()
 	s.d.Providers[provider] = enabled
 	return s.saveLocked()
+}
+
+// CreateAuditEvent durably records an authentication outcome.
+func (s *Store) CreateAuditEvent(event *AuditEvent) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if event.ID == "" {
+		return fmt.Errorf("audit event ID is required")
+	}
+	s.d.AuditEvents[event.ID] = event
+	return s.saveLocked()
+}
+
+// ListAuditEvents returns audit events in chronological order.
+func (s *Store) ListAuditEvents() []*AuditEvent {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	events := make([]*AuditEvent, 0, len(s.d.AuditEvents))
+	for _, event := range s.d.AuditEvents {
+		events = append(events, event)
+	}
+	sort.Slice(events, func(i, j int) bool { return events[i].Timestamp.Before(events[j].Timestamp) })
+	return events
 }
 
 // CountUsers is used to decide whether the very first signup should

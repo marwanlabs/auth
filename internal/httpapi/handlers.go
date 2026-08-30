@@ -22,11 +22,16 @@ type API struct {
 	Reset      ResetTokenRepository
 	Providers  map[string]providers.Provider
 	ProviderDB ProviderRepository
+	Audit      store.AuditRepository
 	Social     *socialauth.Service
 }
 
 func New(a *auth.Service, users UserRepository, sessions SessionRepository, reset ResetTokenRepository, providerDB ProviderRepository, social socialauth.Repository) *API {
-	return &API{Auth: a, Users: users, Sessions: sessions, Reset: reset, ProviderDB: providerDB, Providers: make(map[string]providers.Provider), Social: socialauth.New(social)}
+	api := &API{Auth: a, Users: users, Sessions: sessions, Reset: reset, ProviderDB: providerDB, Providers: make(map[string]providers.Provider), Social: socialauth.New(social)}
+	if audit, ok := users.(store.AuditRepository); ok {
+		api.Audit = audit
+	}
+	return api
 }
 
 // Register attaches all routes to mux.
@@ -103,6 +108,10 @@ type signupRequest struct {
 }
 
 func (api *API) handleSignup(w http.ResponseWriter, r *http.Request) {
+	auditOutcome := "failure"
+	actorID, actorEmail := "", ""
+	defer func() { api.recordAuthEvent(r, "signup", auditOutcome, actorID, actorEmail) }()
+
 	var req signupRequest
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -148,12 +157,14 @@ func (api *API) handleSignup(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not create account")
 		return
 	}
+	actorID, actorEmail = u.ID, u.Email
 
 	if err := api.Auth.SetSessionCookie(w, r, u.ID); err != nil {
 		log.Printf("set session cookie: %v", err)
 		writeError(w, http.StatusInternalServerError, "account created, but sign-in failed — try logging in")
 		return
 	}
+	auditOutcome = "success"
 	writeJSON(w, http.StatusCreated, publicUser(u))
 }
 
@@ -163,6 +174,10 @@ type loginRequest struct {
 }
 
 func (api *API) handleLogin(w http.ResponseWriter, r *http.Request) {
+	auditOutcome := "failure"
+	actorID, actorEmail := "", ""
+	defer func() { api.recordAuthEvent(r, "login", auditOutcome, actorID, actorEmail) }()
+
 	var req loginRequest
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -177,6 +192,7 @@ func (api *API) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "incorrect email or password")
 		return
 	}
+	actorID, actorEmail = u.ID, u.Email
 	ok, err := auth.VerifyPassword(req.Password, u.PasswordHash)
 	if err != nil || !ok {
 		writeError(w, http.StatusUnauthorized, "incorrect email or password")
@@ -187,7 +203,27 @@ func (api *API) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "sign-in failed")
 		return
 	}
+	auditOutcome = "success"
 	writeJSON(w, http.StatusOK, publicUser(u))
+}
+
+func (api *API) recordAuthEvent(r *http.Request, eventType, outcome, actorID, actorEmail string) {
+	if api.Audit == nil {
+		return
+	}
+	event := &store.AuditEvent{
+		ID:         mustID(),
+		Type:       eventType,
+		Outcome:    outcome,
+		Timestamp:  time.Now(),
+		ActorID:    actorID,
+		ActorEmail: actorEmail,
+		ClientIP:   clientIPKey(r),
+		UserAgent:  r.UserAgent(),
+	}
+	if err := api.Audit.CreateAuditEvent(event); err != nil {
+		log.Printf("record auth audit event: %v", err)
+	}
 }
 
 func (api *API) handleLogout(w http.ResponseWriter, r *http.Request) {
