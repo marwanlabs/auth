@@ -14,79 +14,61 @@ import (
 	"authserver/internal/pg"
 	"authserver/internal/providers"
 	"authserver/internal/socialauth"
-	"authserver/internal/store"
 )
 
 func main() {
-	dataPath := getenv("AUTH_DATA_FILE", "data/store.json")
 	addr := getenv("AUTH_ADDR", ":8090")
 	secureCookies := getenv("AUTH_SECURE_COOKIES", "false") == "true"
 
-	// When configured, PostgreSQL owns core authentication, audit, and OAuth data.
-	var core *pg.Store
 	dbCfg, dbCfgErr := pg.ConfigFromEnv(os.Getenv)
 	if dbCfgErr != nil {
 		log.Fatalf("postgres configuration: %v", dbCfgErr)
 	}
-	if dbCfg != nil {
-		connectCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		pgDB, connectErr := pg.Connect(connectCtx, dbCfg)
-		cancel()
-		if connectErr != nil {
-			log.Fatalf("postgres connection: %v", connectErr)
-		}
-		defer pgDB.Close()
-		migrateCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-		version, migrateErr := pg.Migrate(migrateCtx, pgDB)
-		cancel()
-		if migrateErr != nil {
-			log.Fatalf("postgres migration: %v", migrateErr)
-		}
-		core = pg.NewStore(pgDB)
-		log.Printf("postgres ready: schema version %d", version)
+	if dbCfg == nil {
+		log.Fatalf("postgres configuration: %s is required", pg.DefaultEnvVar)
 	}
+	connectCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	pgDB, connectErr := pg.Connect(connectCtx, dbCfg)
+	cancel()
+	if connectErr != nil {
+		log.Fatalf("postgres connection: %v", connectErr)
+	}
+	defer pgDB.Close()
+	migrateCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	version, migrateErr := pg.Migrate(migrateCtx, pgDB)
+	if migrateErr == nil {
+		migrateErr = pg.VerifyJSONImport(migrateCtx, pgDB)
+	}
+	cancel()
+	if migrateErr != nil {
+		log.Fatalf("postgres startup verification: %v", migrateErr)
+	}
+	core := pg.NewStore(pgDB)
+	log.Printf("postgres ready: schema version %d; JSON import verified", version)
 
 	googleClientID := os.Getenv("AUTH_GOOGLE_CLIENT_ID")
 	googleClientSecret := os.Getenv("AUTH_GOOGLE_CLIENT_SECRET")
 	googleRedirectURL := getenv("AUTH_GOOGLE_REDIRECT_URL", "http://localhost:8090/api/auth/google/callback")
 
-	if err := os.MkdirAll("data", 0700); err != nil {
-		log.Fatalf("creating data dir: %v", err)
-	}
-
-	s, err := store.Open(dataPath)
-	if err != nil {
-		log.Fatalf("opening store: %v", err)
-	}
-
-	cleanupStore := interface{ DeleteExpiredSessions() error }(s)
-	if core != nil {
-		cleanupStore = core
-	}
 	// Periodically clean up expired sessions and reset tokens.
 	go func() {
 		ticker := time.NewTicker(1 * time.Hour)
 		defer ticker.Stop()
 		for range ticker.C {
-			if err := cleanupStore.DeleteExpiredSessions(); err != nil {
+			if err := core.DeleteExpiredSessions(); err != nil {
 				log.Printf("cleanup: %v", err)
 			}
 		}
 	}()
 
-	var users httpapi.UserRepository = s
-	var sessions httpapi.SessionRepository = s
-	var reset httpapi.ResetTokenRepository = s
-	var providerDB httpapi.ProviderRepository = s
-	var social socialauth.Repository = s
-	var authStore auth.Repository = s
-	var auditStore store.AuditRepository = s
-	var oauthStore store.OAuthTransactionRepository = s
-	if core != nil {
-		users, sessions, reset, providerDB, social, authStore = core, core, core, core, core, core
-		auditStore = core
-		oauthStore = core
-	}
+	var users httpapi.UserRepository = core
+	var sessions httpapi.SessionRepository = core
+	var reset httpapi.ResetTokenRepository = core
+	var providerDB httpapi.ProviderRepository = core
+	var social socialauth.Repository = core
+	var authStore auth.Repository = core
+	var auditStore = core
+	var oauthStore = core
 	authSvc := &auth.Service{Store: authStore, Secure: secureCookies}
 	api := httpapi.New(authSvc, users, sessions, reset, providerDB, social, auditStore, oauthStore)
 	facebookClientID := os.Getenv("AUTH_FACEBOOK_CLIENT_ID")
@@ -140,7 +122,7 @@ func main() {
 	if !secureCookies {
 		log.Printf("WARNING: AUTH_SECURE_COOKIES is not \"true\" — cookies will be sent over plain HTTP. Set AUTH_SECURE_COOKIES=true once you're behind HTTPS.")
 	}
-	log.Printf("listening on %s (data file: %s)", addr, dataPath)
+	log.Printf("listening on %s (PostgreSQL)", addr)
 	log.Fatal(http.ListenAndServe(addr, logRequests(mux)))
 }
 

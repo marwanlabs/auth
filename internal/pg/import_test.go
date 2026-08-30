@@ -85,8 +85,11 @@ func TestPostgresJSONImportRollbackRepeatAndAllCategories(t *testing.T) {
 	if _, err := Migrate(ctx, db); err != nil {
 		t.Fatal(err)
 	}
+	if err := VerifyJSONImport(ctx, db); !errors.Is(err, ErrImportNotVerified) {
+		t.Fatalf("VerifyJSONImport without marker = %v, want ErrImportNotVerified", err)
+	}
 	path := t.TempDir() + "/store.json"
-	json := `{"users":{"u1":{"id":"u1","email":"u1@example.com","password_hash":"pbkdf2$hash","role":"user","created_at":"2026-01-01T00:00:00Z"},"u2":{"id":"u2","email":"u2@example.com","role":"admin","created_at":"2026-01-01T00:00:00Z"}},"sessions":{"s1":{"id":"s1","user_id":"u1","token_hash":"sha256-session","created_at":"2026-01-01T00:00:00Z","expires_at":"2030-01-01T00:00:00Z","user_agent":"test","ip":"127.0.0.1"}},"reset_tokens":{"sha256-reset":{"token_hash":"sha256-reset","user_id":"u1","expires_at":"2030-01-01T00:00:00Z"}},"oauth_transactions":{"o1":{"id":"o1","provider":"github","created_at":"2026-01-01T00:00:00Z","expires_at":"2030-01-01T00:00:00Z"}},"social_identities":{"i1":{"id":"i1","provider":"github","subject":"subject-1","user_id":"u1","created_at":"2026-01-01T00:00:00Z"}},"enabled_providers":{"github":true},"audit_events":{"a1":{"id":"a1","type":"import","outcome":"success","timestamp":"2026-01-01T00:00:00Z"}}}`
+	json := `{"users":{"u1":{"id":"u1","email":"u1@example.com","password_hash":"pbkdf2$hash","role":"user","created_at":"2026-01-01T00:00:00Z"},"u2":{"id":"u2","email":"u2@example.com","role":"admin","created_at":"2026-01-01T00:00:00Z"}},"sessions":{"s1":{"id":"s1","user_id":"u1","token_hash":"sha256-session","created_at":"2026-01-01T00:00:00Z","expires_at":"2030-01-01T00:00:00Z","user_agent":"test","ip":"127.0.0.1"}},"reset_tokens":{"sha256-reset":{"token_hash":"sha256-reset","user_id":"u1","expires_at":"2030-01-01T00:00:00Z"}},"oauth_transactions":{"o1":{"id":"o1","provider":"github","pkce_verifier":"private","created_at":"2026-01-01T00:00:00Z","expires_at":"2030-01-01T00:00:00Z"}},"social_identities":{"i1":{"id":"i1","provider":"github","subject":"subject-1","user_id":"u1","created_at":"2026-01-01T00:00:00Z"}},"enabled_providers":{"github":true},"audit_events":{"a1":{"id":"a1","type":"import","outcome":"success","timestamp":"2026-01-01T00:00:00Z"}}}`
 	if err := os.WriteFile(path, []byte(json), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -116,5 +119,8 @@ func TestPostgresJSONImportRollbackRepeatAndAllCategories(t *testing.T) {
 	repeat, err := ImportJSON(ctx, db, path)
 	if !errors.Is(err, ErrAlreadyImported) || !repeat.AlreadyImported || !repeat.RolledBack {
 		t.Fatalf("unexpected repeat result: %+v, %v", repeat, err)
+	}
+	if err := VerifyJSONImport(ctx, db); err != nil {
+		t.Fatalf("VerifyJSONImport: %v", err)
 	}
 }

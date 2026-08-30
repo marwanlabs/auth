@@ -30,3 +30,20 @@ func TestMigrationFilesAreContiguousAndValid(t *testing.T) {
 		}
 	}
 }
+
+func TestVerifyMigrationVersions(t *testing.T) {
+	shipped, err := migrations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyMigrationVersions(shipped, []int64{1, 2, 3, 4}); err == nil {
+		t.Fatal("expected incomplete migration ledger to be rejected")
+	}
+	versions := make([]int64, len(shipped))
+	for i, m := range shipped {
+		versions[i] = m.version
+	}
+	if err := verifyMigrationVersions(shipped, versions); err != nil {
+		t.Fatalf("verifyMigrationVersions: %v", err)
+	}
+}

@@ -12,8 +12,14 @@ covered here. Add them only if you actually need them.
 ## Run it
 
 ```
-go run ./cmd/server
+AUTH_DATABASE_URL='postgres://authserver:PASSWORD@localhost:5432/authserver?sslmode=disable' \
+    go run ./cmd/server
 ```
+
+The server requires PostgreSQL and a completed JSON import before it starts.
+Without `AUTH_DATABASE_URL`, a database connection, complete migrations, or the
+verified import marker, startup fails closed. It never falls back to the JSON
+file and does not open or clean it at runtime.
 
 Then open http://localhost:8090 — it redirects to sign-up/sign-in.
 
@@ -37,9 +43,12 @@ direnv allow
 ```
 
 After that, direnv automatically enters the Nix development environment when
-you enter this directory. You can then run the server normally:
+you enter this directory. Initialize PostgreSQL and import the existing JSON
+data before running the server:
 
 ```
+export AUTH_DATABASE_URL='postgres://authserver:PASSWORD@localhost:5432/authserver?sslmode=disable'
+go run ./cmd/import-json -data data/store.json
 go run ./cmd/server
 ```
 
@@ -53,13 +62,15 @@ configurations are in `deploy/Caddyfile` (production) and
 For normal local development, run:
 
 ```
-go run ./cmd/server
+AUTH_DATABASE_URL='postgres://authserver:PASSWORD@localhost:5432/authserver?sslmode=disable' \
+    go run ./cmd/server
 ```
 
 Then open http://localhost:8090. For local HTTPS, start the server with
 `AUTH_SECURE_COOKIES=true` and run Caddy with the local configuration:
 
 ```
+AUTH_DATABASE_URL='postgres://authserver:PASSWORD@localhost:5432/authserver?sslmode=disable' \
 AUTH_SECURE_COOKIES=true go run ./cmd/server
 caddy run --config deploy/Caddyfile.local
 ```
@@ -72,13 +83,15 @@ For a production server, replace `your-domain.example` in
 reachable. Run the Go service with:
 
 ```
+AUTH_DATABASE_URL='postgres://authserver:PASSWORD@localhost:5432/authserver?sslmode=disable' \
 AUTH_ADDR=:8090 AUTH_SECURE_COOKIES=true go run ./cmd/server
 caddy run --config deploy/Caddyfile
 ```
 
 Do not expose port 8090 publicly; only Caddy should accept internet traffic.
 Caddy will obtain and renew the public certificate when the domain is ready.
-Back up the configured `AUTH_DATA_FILE` regularly.
+Back up PostgreSQL regularly. The JSON file is an import source only and is not
+used by the running service.
 
 The `/healthz` endpoint returns `{"status":"ok"}` and can be used by a
 service manager or monitoring system.
@@ -127,7 +140,7 @@ roles, disabled users, and sessions remain shared behavior.
 | Variable               | Default            | Purpose                                                   |
 |-------------------------|--------------------|-----------------------------------------------------------|
 | `AUTH_ADDR`             | `:8090`            | Listen address                                            |
-| `AUTH_DATA_FILE`        | `data/store.json`  | Where user/session data is persisted                      |
+| `AUTH_DATA_FILE`        | `data/store.json`  | Input file for the one-time import command only            |
 | `AUTH_SECURE_COOKIES`   | `false`            | Set to `true` once served over HTTPS (marks cookies Secure) |
 | `AUTH_DATABASE_URL`     | *(unset)*          | PostgreSQL connection string; when set the service validates it, connects, and applies schema migrations before serving. Credentials are never logged. |
 | `TEST_DATABASE_URL`     | *(unset)*          | Used by `go test` for the PostgreSQL integration environment; unset, those tests skip. |
@@ -138,14 +151,27 @@ report. Rejected records and database failures roll back the complete import;
 the PostgreSQL ledger refuses a repeat. Password, session, and reset hashes
 are preserved, while raw PKCE verifiers are rejected rather than copied.
 
-## PostgreSQL runtime foundation
+## PostgreSQL runtime
 
-The service can run its persistence on PostgreSQL (currently a JSON-file store;
-the store cutover is a later ticket). When `AUTH_DATABASE_URL` is set the
-service, before accepting any traffic, validates the configuration, opens a
-connection pool, verifies the connection, and applies versioned schema
-migrations. Any configuration or connection failure is fatal at startup and is
-reported **without the connection string or its password**.
+PostgreSQL is the only normal runtime persistence. Before accepting traffic the
+service validates the configuration, opens a connection pool, applies versioned
+schema migrations, verifies that every migration shipped by the binary is
+recorded, and requires the committed JSON import marker. Any configuration,
+connection, migration, or import verification failure is fatal at startup and
+is reported **without the connection string or its password**.
+
+### Import before first start
+
+1. Ensure the JSON store is backed up and PostgreSQL is reachable.
+2. Set `AUTH_DATABASE_URL` and run `go run ./cmd/import-json -data data/store.json`.
+3. Confirm the command reports `"Committed": true`.
+4. Start `cmd/server` with the same `AUTH_DATABASE_URL`.
+
+The import is transactional and includes core authentication data, sessions,
+reset tokens, social identities, provider settings, audit events, and OAuth
+transactions. Rejected records roll back the complete import, and the ledger
+refuses a repeat. After cutover, changes are persisted only in PostgreSQL;
+`AUTH_DATA_FILE` is not read by the server.
 
 Migrations live as embedded, versioned SQL files in
 `internal/pg/migrations/` and are applied on a single connection under a
@@ -190,14 +216,9 @@ is unset, so `go test ./...` passes offline.
    `https://yourapp.com/reset-confirm.html?token=<token>`.
 2. **HTTPS.** Run this behind a reverse proxy (Caddy, nginx, or your cloud
    load balancer) terminating TLS, and set `AUTH_SECURE_COOKIES=true`.
-3. **Storage at scale.** The JSON-file store (`internal/store`) is fine for
-   a small team/internal tool. If you outgrow it, the `Store` struct's
-   methods are the only place to change — swap the JSON file for Postgres
-   using `database/sql` and a driver of your choice, keeping the same
-   method signatures.
-4. **Backups.** Back up `data/store.json` like you would a database — it
-   *is* your database.
-5. **MFA**, if you need it: TOTP or passkeys are reasonable next additions.
+3. **Backups.** Back up PostgreSQL, including the `json_imports` and
+   `schema_migrations` tables.
+4. **MFA**, if you need it: TOTP or passkeys are reasonable next additions.
 
 ### Google sign-in
 
