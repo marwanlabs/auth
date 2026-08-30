@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"authserver/internal/store/contract"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
 )
@@ -112,6 +113,62 @@ func TestPostgresRepeatableInitialization(t *testing.T) {
 	if version != wantVersion {
 		t.Errorf("second pool migrated to version %d, want %d", version, wantVersion)
 	}
+}
+
+func TestPostgresCoreStoreContract(t *testing.T) {
+	baseURL := os.Getenv("TEST_DATABASE_URL")
+	if baseURL == "" {
+		t.Skip("TEST_DATABASE_URL not set; skipping PostgreSQL core store contract")
+	}
+	ctx := context.Background()
+	adminCfg, err := ParseConfig(baseURL)
+	if err != nil {
+		t.Fatalf("ParseConfig: %v", err)
+	}
+	admin, err := Connect(ctx, adminCfg)
+	if err != nil {
+		t.Fatalf("connecting to test database: %v", err)
+	}
+	defer admin.Close()
+	schema := "auth_store_test_" + strconv.FormatInt(time.Now().UnixNano(), 10)
+	quoted := `"` + strings.ReplaceAll(schema, `"`, `""`) + `"`
+	if _, err := admin.ExecContext(ctx, "CREATE SCHEMA "+quoted); err != nil {
+		t.Fatalf("creating test schema: %v", err)
+	}
+	defer admin.ExecContext(context.Background(), "DROP SCHEMA "+quoted+" CASCADE")
+
+	newDB := func() *sql.DB {
+		cfg, err := pgx.ParseConfig(baseURL)
+		if err != nil {
+			t.Fatalf("parse test URL: %v", err)
+		}
+		if cfg.Config.RuntimeParams == nil {
+			cfg.Config.RuntimeParams = map[string]string{}
+		}
+		cfg.Config.RuntimeParams["search_path"] = schema
+		return stdlib.OpenDB(*cfg)
+	}
+	db := newDB()
+	defer db.Close()
+	if _, err := Migrate(ctx, db); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	contract.RunCore(t, func(t *testing.T) contract.CoreRepository {
+		if _, err := db.ExecContext(ctx, `DELETE FROM users`); err != nil {
+			t.Fatalf("reset users: %v", err)
+		}
+		if _, err := db.ExecContext(ctx, `DELETE FROM provider_settings`); err != nil {
+			t.Fatalf("reset provider settings: %v", err)
+		}
+		return NewStore(db)
+	})
+	if _, err := db.ExecContext(ctx, `DELETE FROM users`); err != nil {
+		t.Fatalf("reset users for durability: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `DELETE FROM provider_settings`); err != nil {
+		t.Fatalf("reset provider settings for durability: %v", err)
+	}
+	contract.RunCoreDurability(t, func() contract.CoreRepository { return NewStore(db) })
 }
 
 func appliedLedger(ctx context.Context, t *testing.T, db *sql.DB) map[int64]bool {

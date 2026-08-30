@@ -17,7 +17,7 @@ import (
 	"authserver/internal/store"
 )
 
-type Repository interface {
+type CoreRepository interface {
 	CreateUser(*store.User) error
 	GetUserByID(string) (*store.User, error)
 	GetUserByEmail(string) (*store.User, error)
@@ -31,8 +31,6 @@ type Repository interface {
 	DeleteSession(string) error
 	ListSessionsForUser(string) ([]*store.Session, error)
 	DeleteExpiredSessions() error
-	CreateOAuthTransaction(*store.OAuthTransaction) error
-	ConsumeOAuthTransaction(string, string) (*store.OAuthTransaction, error)
 	CreateResetToken(*store.ResetToken) error
 	GetResetToken(string) (*store.ResetToken, error)
 	DeleteResetToken(string) error
@@ -43,9 +41,22 @@ type Repository interface {
 	SetProviderEnabled(string, bool) error
 }
 
+type Repository interface {
+	CoreRepository
+	CreateOAuthTransaction(*store.OAuthTransaction) error
+	ConsumeOAuthTransaction(string, string) (*store.OAuthTransaction, error)
+}
+
 type Factory func(*testing.T) Repository
 
 func Run(t *testing.T, newRepository Factory) {
+	t.Helper()
+	RunCore(t, func(t *testing.T) CoreRepository { return newRepository(t) })
+	t.Run("oauth transactions", func(t *testing.T) { testOAuthTransactions(t, newRepository(t)) })
+	t.Run("oauth expiration cleanup", func(t *testing.T) { testOAuthExpirationCleanup(t, newRepository(t)) })
+}
+
+func RunCore(t *testing.T, newRepository func(*testing.T) CoreRepository) {
 	t.Helper()
 	t.Run("users", func(t *testing.T) { testUsers(t, newRepository(t)) })
 	t.Run("user update and ordering", func(t *testing.T) { testUserUpdateAndOrdering(t, newRepository(t)) })
@@ -56,7 +67,43 @@ func Run(t *testing.T, newRepository Factory) {
 	t.Run("providers", func(t *testing.T) { testProviders(t, newRepository(t)) })
 	t.Run("deletion cascades", func(t *testing.T) { testDeletionCascades(t, newRepository(t)) })
 	t.Run("expiration cleanup", func(t *testing.T) { testExpirationCleanup(t, newRepository(t)) })
-	t.Run("oauth transactions", func(t *testing.T) { testOAuthTransactions(t, newRepository(t)) })
+}
+
+func RunCoreDurability(t *testing.T, open func() CoreRepository) {
+	t.Helper()
+	r := open()
+	u := user("durable", "durable@example.com", store.RoleUser)
+	if err := r.CreateUser(u); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.CreateSession(&store.Session{ID: "durable-session", UserID: u.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.CreateResetToken(&store.ResetToken{TokenHash: "durable-reset", UserID: u.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.CreateIdentity(&store.SocialIdentity{ID: "durable-identity", Provider: "github", Subject: "durable", UserID: u.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.SetProviderEnabled("github", true); err != nil {
+		t.Fatal(err)
+	}
+	reopened := open()
+	if got, err := reopened.GetUserByEmail(u.Email); err != nil || got.ID != u.ID {
+		t.Fatalf("reopened user: %v, %v", got, err)
+	}
+	if _, err := reopened.GetSession("durable-session"); err != nil {
+		t.Fatalf("reopened session: %v", err)
+	}
+	if _, err := reopened.GetResetToken("durable-reset"); err != nil {
+		t.Fatalf("reopened reset token: %v", err)
+	}
+	if _, err := reopened.GetIdentity("github", "durable"); err != nil {
+		t.Fatalf("reopened identity: %v", err)
+	}
+	if enabled, explicit := reopened.ProviderSetting("github"); !enabled || !explicit {
+		t.Fatalf("reopened provider setting: %v, %v", enabled, explicit)
+	}
 }
 
 // RunDurability checks that state survives closing and reopening the backing
@@ -104,7 +151,7 @@ func RunDurability(t *testing.T, open func() Repository) {
 	}
 }
 
-func testUsers(t *testing.T, r Repository) {
+func testUsers(t *testing.T, r CoreRepository) {
 	first := user("first", "first@example.com", store.RoleUser)
 	if err := r.CreateUser(first); err != nil {
 		t.Fatal(err)
@@ -126,7 +173,7 @@ func testUsers(t *testing.T, r Repository) {
 	}
 }
 
-func testUserUpdateAndOrdering(t *testing.T, r Repository) {
+func testUserUpdateAndOrdering(t *testing.T, r CoreRepository) {
 	for _, u := range []*store.User{user("z", "z@example.com", store.RoleUser), user("a", "a@example.com", store.RoleUser)} {
 		if err := r.CreateUser(u); err != nil {
 			t.Fatal(err)
@@ -147,7 +194,7 @@ func testUserUpdateAndOrdering(t *testing.T, r Repository) {
 	}
 }
 
-func testAdministratorCounts(t *testing.T, r Repository) {
+func testAdministratorCounts(t *testing.T, r CoreRepository) {
 	admin := user("admin", "admin@example.com", store.RoleAdmin)
 	disabled := user("disabled", "disabled@example.com", store.RoleAdmin)
 	disabled.Disabled = true
@@ -164,7 +211,7 @@ func testAdministratorCounts(t *testing.T, r Repository) {
 	}
 }
 
-func testSessions(t *testing.T, r Repository) {
+func testSessions(t *testing.T, r CoreRepository) {
 	session := &store.Session{ID: "session", UserID: "user", TokenHash: "hash", CreatedAt: time.Now(), ExpiresAt: time.Now().Add(time.Hour)}
 	if err := r.CreateSession(session); err != nil {
 		t.Fatal(err)
@@ -184,7 +231,7 @@ func testSessions(t *testing.T, r Repository) {
 	}
 }
 
-func testResetTokens(t *testing.T, r Repository) {
+func testResetTokens(t *testing.T, r CoreRepository) {
 	token := &store.ResetToken{TokenHash: "reset", UserID: "user", ExpiresAt: time.Now().Add(time.Hour)}
 	if err := r.CreateResetToken(token); err != nil {
 		t.Fatal(err)
@@ -200,7 +247,7 @@ func testResetTokens(t *testing.T, r Repository) {
 	}
 }
 
-func testIdentities(t *testing.T, r Repository) {
+func testIdentities(t *testing.T, r CoreRepository) {
 	identity := &store.SocialIdentity{ID: "identity", Provider: "github", Subject: "subject", UserID: "user", CreatedAt: time.Now()}
 	if err := r.CreateIdentity(identity); err != nil {
 		t.Fatal(err)
@@ -216,7 +263,7 @@ func testIdentities(t *testing.T, r Repository) {
 	}
 }
 
-func testProviders(t *testing.T, r Repository) {
+func testProviders(t *testing.T, r CoreRepository) {
 	if settings := r.ListProviderSettings(); len(settings) != 0 {
 		t.Fatalf("initial providers = %#v", settings)
 	}
@@ -234,7 +281,7 @@ func testProviders(t *testing.T, r Repository) {
 	}
 }
 
-func testDeletionCascades(t *testing.T, r Repository) {
+func testDeletionCascades(t *testing.T, r CoreRepository) {
 	u := user("cascade", "cascade@example.com", store.RoleUser)
 	if err := r.CreateUser(u); err != nil {
 		t.Fatal(err)
@@ -265,7 +312,7 @@ func testDeletionCascades(t *testing.T, r Repository) {
 	}
 }
 
-func testExpirationCleanup(t *testing.T, r Repository) {
+func testExpirationCleanup(t *testing.T, r CoreRepository) {
 	if err := r.CreateSession(&store.Session{ID: "expired-session", UserID: "user", ExpiresAt: time.Now().Add(-time.Minute)}); err != nil {
 		t.Fatal(err)
 	}
@@ -276,9 +323,6 @@ func testExpirationCleanup(t *testing.T, r Repository) {
 		t.Fatal(err)
 	}
 	if err := r.CreateResetToken(&store.ResetToken{TokenHash: "active-reset", UserID: "user", ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
-		t.Fatal(err)
-	}
-	if err := r.CreateOAuthTransaction(&store.OAuthTransaction{ID: "expired-oauth", Provider: "github", ExpiresAt: time.Now().Add(-time.Minute)}); err != nil {
 		t.Fatal(err)
 	}
 	sessions, err := r.ListSessionsForUser("user")
@@ -303,9 +347,6 @@ func testExpirationCleanup(t *testing.T, r Repository) {
 	if _, err := r.GetResetToken("active-reset"); err != nil {
 		t.Fatalf("active reset error = %v", err)
 	}
-	if _, err := r.ConsumeOAuthTransaction("expired-oauth", "github"); !errors.Is(err, store.ErrNotFound) {
-		t.Fatalf("expired oauth error = %v", err)
-	}
 }
 
 func testOAuthTransactions(t *testing.T, r Repository) {
@@ -322,6 +363,18 @@ func testOAuthTransactions(t *testing.T, r Repository) {
 	}
 	if _, err := r.ConsumeOAuthTransaction(tx.ID, tx.Provider); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("replay error = %v", err)
+	}
+}
+
+func testOAuthExpirationCleanup(t *testing.T, r Repository) {
+	if err := r.CreateOAuthTransaction(&store.OAuthTransaction{ID: "expired-oauth", Provider: "github", ExpiresAt: time.Now().Add(-time.Minute)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.DeleteExpiredSessions(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.ConsumeOAuthTransaction("expired-oauth", "github"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("expired oauth error = %v", err)
 	}
 }
 

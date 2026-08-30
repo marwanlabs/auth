@@ -13,6 +13,7 @@ import (
 	"authserver/internal/httpapi"
 	"authserver/internal/pg"
 	"authserver/internal/providers"
+	"authserver/internal/socialauth"
 	"authserver/internal/store"
 )
 
@@ -21,11 +22,9 @@ func main() {
 	addr := getenv("AUTH_ADDR", ":8090")
 	secureCookies := getenv("AUTH_SECURE_COOKIES", "false") == "true"
 
-	// PostgreSQL runtime foundation (optional): when AUTH_DATABASE_URL is
-	// set, validate the configuration, connect, and apply schema migrations
-	// before accepting any traffic. Any failure here is fatal and reported
-	// without credentials. The JSON-file store stays in use until the store
-	// cutover (issue #19).
+	// When configured, PostgreSQL owns the core authentication data. Audit and
+	// OAuth capabilities remain on the JSON store until their owning tickets.
+	var core *pg.Store
 	dbCfg, dbCfgErr := pg.ConfigFromEnv(os.Getenv)
 	if dbCfgErr != nil {
 		log.Fatalf("postgres configuration: %v", dbCfgErr)
@@ -44,6 +43,7 @@ func main() {
 		if migrateErr != nil {
 			log.Fatalf("postgres migration: %v", migrateErr)
 		}
+		core = pg.NewStore(pgDB)
 		log.Printf("postgres ready: schema version %d", version)
 	}
 
@@ -60,19 +60,32 @@ func main() {
 		log.Fatalf("opening store: %v", err)
 	}
 
+	cleanupStore := interface{ DeleteExpiredSessions() error }(s)
+	if core != nil {
+		cleanupStore = core
+	}
 	// Periodically clean up expired sessions and reset tokens.
 	go func() {
 		ticker := time.NewTicker(1 * time.Hour)
 		defer ticker.Stop()
 		for range ticker.C {
-			if err := s.DeleteExpiredSessions(); err != nil {
+			if err := cleanupStore.DeleteExpiredSessions(); err != nil {
 				log.Printf("cleanup: %v", err)
 			}
 		}
 	}()
 
-	authSvc := &auth.Service{Store: s, Secure: secureCookies}
-	api := httpapi.New(authSvc, s, s, s, s, s, s, s)
+	var users httpapi.UserRepository = s
+	var sessions httpapi.SessionRepository = s
+	var reset httpapi.ResetTokenRepository = s
+	var providerDB httpapi.ProviderRepository = s
+	var social socialauth.Repository = s
+	var authStore auth.Repository = s
+	if core != nil {
+		users, sessions, reset, providerDB, social, authStore = core, core, core, core, core, core
+	}
+	authSvc := &auth.Service{Store: authStore, Secure: secureCookies}
+	api := httpapi.New(authSvc, users, sessions, reset, providerDB, social, s, s)
 	facebookClientID := os.Getenv("AUTH_FACEBOOK_CLIENT_ID")
 	facebookClientSecret := os.Getenv("AUTH_FACEBOOK_CLIENT_SECRET")
 	facebookRedirectURL := getenv("AUTH_FACEBOOK_REDIRECT_URL", "http://localhost:8090/api/auth/facebook/callback")
