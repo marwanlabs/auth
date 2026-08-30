@@ -20,6 +20,8 @@
       <input type="password" id="password" name="password" autocomplete="current-password" required>
 
       <button type="submit" id="submit-btn">Sign in</button>
+      <a class="oauth-button" href="/api/auth/google">Continue with Google</a>
+      <div class="oauth-divider"><span>or use email</span></div>
       <div class="error-box" id="error-box" hidden></div>
 
       <p class="footer-link">
@@ -34,6 +36,9 @@
     const form = document.getElementById('login-form');
     const errorBox = document.getElementById('error-box');
     const submitBtn = document.getElementById('submit-btn');
+
+    const oauthError = new URLSearchParams(window.location.search).get('oauth_error');
+    if (oauthError) showError(errorBox, oauthError);
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();

@@ -26,6 +26,7 @@ const (
 type User struct {
 	ID           string    `json:"id"`
 	Email        string    `json:"email"` // stored lowercased
+	GoogleID     string    `json:"google_id,omitempty"`
 	PasswordHash string    `json:"password_hash"`
 	Role         Role      `json:"role"`
 	Disabled     bool      `json:"disabled"`
@@ -159,6 +160,17 @@ func (s *Store) GetUserByEmail(email string) (*User, error) {
 	defer s.mu.RUnlock()
 	for _, u := range s.d.Users {
 		if u.Email == email {
+			return u, nil
+		}
+	}
+	return nil, ErrNotFound
+}
+
+func (s *Store) GetUserByGoogleID(googleID string) (*User, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, u := range s.d.Users {
+		if u.GoogleID == googleID {
 			return u, nil
 		}
 	}

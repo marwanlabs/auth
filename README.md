@@ -132,6 +132,7 @@ Then open http://localhost:3000.
 - Admin user-management dashboard: search users, change roles, disable/enable accounts, and delete accounts
 - Password change (requires current password)
 - Password reset via emailed one-time link (single-use, 1-hour expiry)
+- Optional Google OAuth sign-in with automatic linking to existing email accounts
 - Rate limiting on auth endpoints (10 req/min/IP by default)
 - No user enumeration: login, signup-conflict, and reset-request all return
   intentionally vague responses
@@ -152,9 +153,25 @@ Then open http://localhost:3000.
    method signatures.
 4. **Backups.** Back up `data/store.json` like you would a database — it
    *is* your database.
-5. **Social login / MFA**, if you want them: OAuth (Google/GitHub) and TOTP
-   are both reasonable additions but aren't included here to keep this
-   readable as a starting point rather than a framework.
+5. **MFA**, if you need it: TOTP or passkeys are reasonable next additions.
+
+### Google sign-in
+
+Create a Web OAuth client in Google Cloud Console, add the redirect URI below,
+then set these variables before starting the server:
+
+```
+AUTH_GOOGLE_CLIENT_ID=...
+AUTH_GOOGLE_CLIENT_SECRET=...
+AUTH_GOOGLE_REDIRECT_URL=http://localhost:8090/api/auth/google/callback
+```
+
+For HTTPS, use your public HTTPS callback URL and set
+`AUTH_SECURE_COOKIES=true`. Google sign-in is then available on the sign-in
+page. Existing accounts with the same verified email are linked automatically.
+For the local Caddy setup, use
+`https://localhost:8443/api/auth/google/callback` as the redirect URL and add
+that exact URL to the Google OAuth client.
 
 ## API reference
 
@@ -162,6 +179,8 @@ Then open http://localhost:3000.
 |--------|-------------------------------|----------------|------------------------------------|
 | POST   | `/api/signup`                 | No             | Create account, starts a session   |
 | POST   | `/api/login`                  | No             | Start a session                    |
+| GET    | `/api/auth/google`            | No             | Start Google sign-in (when configured) |
+| GET    | `/api/auth/google/callback`   | No             | Complete Google sign-in            |
 | POST   | `/api/logout`                 | Yes            | Clear the current session cookie   |
 | GET    | `/api/me`                     | Yes            | Current user info                  |
 | POST   | `/api/change-password`        | Yes            | Requires current password          |

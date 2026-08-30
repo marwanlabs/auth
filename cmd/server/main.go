@@ -11,12 +11,17 @@ import (
 	"authserver/internal/auth"
 	"authserver/internal/httpapi"
 	"authserver/internal/store"
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/endpoints"
 )
 
 func main() {
 	dataPath := getenv("AUTH_DATA_FILE", "data/store.json")
 	addr := getenv("AUTH_ADDR", ":8090")
 	secureCookies := getenv("AUTH_SECURE_COOKIES", "false") == "true"
+	googleClientID := os.Getenv("AUTH_GOOGLE_CLIENT_ID")
+	googleClientSecret := os.Getenv("AUTH_GOOGLE_CLIENT_SECRET")
+	googleRedirectURL := getenv("AUTH_GOOGLE_REDIRECT_URL", "http://localhost:8090/api/auth/google/callback")
 
 	if err := os.MkdirAll("data", 0700); err != nil {
 		log.Fatalf("creating data dir: %v", err)
@@ -40,9 +45,20 @@ func main() {
 
 	authSvc := &auth.Service{Store: s, Secure: secureCookies}
 	api := httpapi.New(authSvc, s)
+	if googleClientID != "" && googleClientSecret != "" {
+		api.Google = &httpapi.GoogleOAuth{
+			Config: oauth2.Config{
+				ClientID: googleClientID, ClientSecret: googleClientSecret,
+				Endpoint: endpoints.Google, RedirectURL: googleRedirectURL,
+				Scopes: []string{"openid", "email", "profile"},
+			},
+			Secure: secureCookies,
+		}
+	}
 
 	mux := http.NewServeMux()
 	api.Register(mux)
+	api.RegisterGoogle(mux)
 
 	// Serve the static frontend from ./web at the root.
 	fs := http.FileServer(http.Dir("web"))
