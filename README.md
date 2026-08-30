@@ -199,6 +199,23 @@ Then enable Microsoft from the admin dashboard under Sign-in providers. For
 local HTTPS, use
 `https://localhost:8443/api/auth/microsoft/callback` as the callback URL.
 
+### Apple sign-in
+
+Create a Sign in with Apple Services ID and private key in Apple Developer,
+then generate the client-secret JWT required by Apple and provide it as
+`AUTH_APPLE_CLIENT_SECRET`:
+
+```
+AUTH_APPLE_CLIENT_ID=...
+AUTH_APPLE_CLIENT_SECRET=...
+AUTH_APPLE_REDIRECT_URL=http://localhost:8090/api/auth/apple/callback
+```
+
+Apple sends its callback with `form_post`. The server accepts that callback,
+validates the ID token signature using Apple's public keys, and uses Apple's
+stable subject identifier for account linking. Enable Apple from the admin
+dashboard after configuring the credentials.
+
 ## API reference
 
 | Method | Path                          | Auth required | Description                       |
@@ -213,6 +230,8 @@ local HTTPS, use
 | GET    | `/api/auth/github/callback`     | No             | Complete GitHub sign-in             |
 | GET    | `/api/auth/microsoft`           | No             | Start Microsoft sign-in             |
 | GET    | `/api/auth/microsoft/callback`  | No             | Complete Microsoft sign-in          |
+| GET    | `/api/auth/apple`               | No             | Start Apple sign-in                 |
+| GET/POST | `/api/auth/apple/callback`    | No             | Complete Apple sign-in              |
 | GET    | `/api/auth/providers`          | No             | List enabled social providers      |
 | POST   | `/api/logout`                 | Yes            | Clear the current session cookie   |
 | GET    | `/api/me`                     | Yes            | Current user info                  |

@@ -18,6 +18,9 @@ func (api *API) RegisterSocialRoutes(mux *http.ServeMux) {
 		p := provider
 		mux.HandleFunc("GET /api/auth/"+name, func(w http.ResponseWriter, r *http.Request) { api.handleSocialStart(w, r, p) })
 		mux.HandleFunc("GET /api/auth/"+name+"/callback", func(w http.ResponseWriter, r *http.Request) { api.handleSocialCallback(w, r, p) })
+		if name == "apple" {
+			mux.HandleFunc("POST /api/auth/"+name+"/callback", func(w http.ResponseWriter, r *http.Request) { api.handleSocialCallback(w, r, p) })
+		}
 	}
 }
 
@@ -41,16 +44,16 @@ func (api *API) handleSocialCallback(w http.ResponseWriter, r *http.Request, pro
 		return
 	}
 	cookie, err := r.Cookie(socialStateCookie)
-	if err != nil || cookie.Value == "" || cookie.Value != r.URL.Query().Get("state") {
+	if err != nil || cookie.Value == "" || cookie.Value != r.FormValue("state") {
 		socialError(w, "invalid sign-in state")
 		return
 	}
 	clearSocialState(w, api.Auth.Secure)
-	if r.URL.Query().Get("error") != "" {
+	if r.FormValue("error") != "" {
 		socialError(w, "social sign-in was cancelled")
 		return
 	}
-	identity, err := provider.Resolve(r.Context(), r.URL.Query().Get("code"))
+	identity, err := provider.Resolve(r.Context(), r.FormValue("code"))
 	if err != nil || identity.Subject == "" || !identity.EmailVerified || !looksLikeEmail(normalizeEmail(identity.Email)) {
 		log.Printf("%s profile lookup: %v", provider.ID(), err)
 		socialError(w, "the provider did not provide a verified email address")
