@@ -1,0 +1,15 @@
+# Replace your-domain.example with the host name users will visit.
+# Caddy obtains and renews a trusted certificate automatically when DNS points
+# at this server and ports 80/443 are reachable.
+your-domain.example {
+	encode gzip
+
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy no-referrer
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	}
+
+	reverse_proxy 127.0.0.1:8090
+}

@@ -1,0 +1,13 @@
+# Local HTTPS uses Caddy's locally trusted internal certificate.
+# The browser may require trusting Caddy's local CA once.
+# Use an unprivileged port so this can run without sudo.
+# Disable automatic HTTP redirects because those would also bind to port 80.
+{
+	auto_https disable_redirects
+}
+
+https://localhost:8443 {
+	tls internal
+	encode gzip
+	reverse_proxy 127.0.0.1:8090
+}

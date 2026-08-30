@@ -23,7 +23,7 @@ Everyone after that is a regular user.
 ## Development environment
 
 This repository includes a Nix flake with the supported default Go toolchain,
-`gopls`, and Go tools.
+`gopls`, Go tools, and Caddy.
 Enter it manually with:
 
 ```
@@ -42,6 +42,46 @@ you enter this directory. You can then run the server normally:
 ```
 go run ./cmd/server
 ```
+
+## HTTPS and self-hosting
+
+The server is designed to run behind [Caddy](https://caddyserver.com/), which
+handles HTTPS while the Go service listens privately on port 8090. Example
+configurations are in `deploy/Caddyfile` (production) and
+`deploy/Caddyfile.local` (local HTTPS).
+
+For normal local development, run:
+
+```
+go run ./cmd/server
+```
+
+Then open http://localhost:8090. For local HTTPS, start the server with
+`AUTH_SECURE_COOKIES=true` and run Caddy with the local configuration:
+
+```
+AUTH_SECURE_COOKIES=true go run ./cmd/server
+caddy run --config deploy/Caddyfile.local
+```
+
+Then open https://localhost:8443. Caddy's `tls internal` certificate may need
+to be trusted in your browser or operating system once.
+
+For a production server, replace `your-domain.example` in
+`deploy/Caddyfile`, point the domain at the server, and make ports 80 and 443
+reachable. Run the Go service with:
+
+```
+AUTH_ADDR=:8090 AUTH_SECURE_COOKIES=true go run ./cmd/server
+caddy run --config deploy/Caddyfile
+```
+
+Do not expose port 8090 publicly; only Caddy should accept internet traffic.
+Caddy will obtain and renew the public certificate when the domain is ready.
+Back up the configured `AUTH_DATA_FILE` regularly.
+
+The `/healthz` endpoint returns `{"status":"ok"}` and can be used by a
+service manager or monitoring system.
 
 ### Environment variables
 

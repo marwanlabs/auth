@@ -18,6 +18,7 @@
             pkgs.go
             pkgs.gopls
             pkgs.gotools
+            pkgs.caddy
           ];
 
           shellHook = ''

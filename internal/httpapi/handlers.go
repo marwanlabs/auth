@@ -24,6 +24,7 @@ func New(a *auth.Service, s *store.Store) *API {
 
 // Register attaches all routes to mux.
 func (api *API) Register(mux *http.ServeMux) {
+	mux.HandleFunc("GET /healthz", api.handleHealth)
 	loginLimiter := auth.NewRateLimiter(10, time.Minute) // 10 attempts/min/IP
 
 	mux.HandleFunc("POST /api/signup", loginLimiter.Middleware(clientIPKey, api.handleSignup))
@@ -41,6 +42,10 @@ func (api *API) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/admin/users/role", api.Auth.RequireRole(store.RoleAdmin, api.handleChangeUserRole))
 	mux.HandleFunc("POST /api/admin/users/status", api.Auth.RequireRole(store.RoleAdmin, api.handleChangeUserStatus))
 	mux.HandleFunc("POST /api/admin/users/delete", api.Auth.RequireRole(store.RoleAdmin, api.handleDeleteUser))
+}
+
+func (api *API) handleHealth(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 func clientIPKey(r *http.Request) string {
