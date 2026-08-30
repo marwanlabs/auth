@@ -16,14 +16,17 @@ import (
 )
 
 type API struct {
-	Auth      *auth.Service
-	Store     *store.Store
-	Providers map[string]providers.Provider
-	Social    *socialauth.Service
+	Auth       *auth.Service
+	Users      UserRepository
+	Sessions   SessionRepository
+	Reset      ResetTokenRepository
+	Providers  map[string]providers.Provider
+	ProviderDB ProviderRepository
+	Social     *socialauth.Service
 }
 
-func New(a *auth.Service, s *store.Store) *API {
-	return &API{Auth: a, Store: s, Providers: make(map[string]providers.Provider), Social: socialauth.New(s)}
+func New(a *auth.Service, users UserRepository, sessions SessionRepository, reset ResetTokenRepository, providerDB ProviderRepository, social socialauth.Repository) *API {
+	return &API{Auth: a, Users: users, Sessions: sessions, Reset: reset, ProviderDB: providerDB, Providers: make(map[string]providers.Provider), Social: socialauth.New(social)}
 }
 
 // Register attaches all routes to mux.
@@ -119,7 +122,7 @@ func (api *API) handleSignup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	role := store.RoleUser
-	if api.Store.CountUsers() == 0 {
+	if api.Users.CountUsers() == 0 {
 		role = store.RoleAdmin // first user to sign up becomes admin
 	}
 
@@ -130,7 +133,7 @@ func (api *API) handleSignup(w http.ResponseWriter, r *http.Request) {
 		Role:         role,
 		CreatedAt:    time.Now(),
 	}
-	if err := api.Store.CreateUser(u); err != nil {
+	if err := api.Users.CreateUser(u); err != nil {
 		if err == store.ErrConflict {
 			// Deliberately vague: don't reveal whether an email is
 			// registered to an unauthenticated caller.
@@ -163,7 +166,7 @@ func (api *API) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	email := normalizeEmail(req.Email)
 
-	u, err := api.Store.GetUserByEmail(email)
+	u, err := api.Users.GetUserByEmail(email)
 	if err != nil {
 		// Same error for "no such user" and "wrong password" — don't leak
 		// which emails are registered.
@@ -224,7 +227,7 @@ func (api *API) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u.PasswordHash = hash
-	if err := api.Store.UpdateUser(u); err != nil {
+	if err := api.Users.UpdateUser(u); err != nil {
 		writeError(w, http.StatusInternalServerError, "could not update password")
 		return
 	}
@@ -233,7 +236,7 @@ func (api *API) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 
 func (api *API) handleListSessions(w http.ResponseWriter, r *http.Request) {
 	u := auth.UserFromContext(r.Context())
-	sessions, err := api.Store.ListSessionsForUser(u.ID)
+	sessions, err := api.Sessions.ListSessionsForUser(u.ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not list sessions")
 		return
@@ -277,13 +280,13 @@ func (api *API) handleRevokeSession(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	sess, err := api.Store.GetSession(req.SessionID)
+	sess, err := api.Sessions.GetSession(req.SessionID)
 	if err != nil || sess.UserID != u.ID {
 		// Don't reveal whether the session ID exists at all.
 		writeError(w, http.StatusNotFound, "session not found")
 		return
 	}
-	if err := api.Store.DeleteSession(req.SessionID); err != nil {
+	if err := api.Sessions.DeleteSession(req.SessionID); err != nil {
 		writeError(w, http.StatusInternalServerError, "could not revoke session")
 		return
 	}
@@ -306,7 +309,7 @@ func (api *API) handleResetRequest(w http.ResponseWriter, r *http.Request) {
 	email := normalizeEmail(req.Email)
 	// Always return 200 regardless of whether the email exists, so this
 	// endpoint can't be used to enumerate registered users.
-	u, err := api.Store.GetUserByEmail(email)
+	u, err := api.Users.GetUserByEmail(email)
 	if err == nil {
 		token, terr := auth.NewToken(32)
 		if terr == nil {
@@ -315,7 +318,7 @@ func (api *API) handleResetRequest(w http.ResponseWriter, r *http.Request) {
 				UserID:    u.ID,
 				ExpiresAt: time.Now().Add(1 * time.Hour),
 			}
-			if serr := api.Store.CreateResetToken(rt); serr == nil {
+			if serr := api.Reset.CreateResetToken(rt); serr == nil {
 				// TODO: send `token` to the user's email address instead
 				// of logging it. Logging it here makes the flow testable
 				// without an email provider configured.
@@ -344,12 +347,12 @@ func (api *API) handleResetConfirm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	hash := auth.HashToken(req.Token)
-	rt, err := api.Store.GetResetToken(hash)
+	rt, err := api.Reset.GetResetToken(hash)
 	if err != nil || time.Now().After(rt.ExpiresAt) {
 		writeError(w, http.StatusBadRequest, "reset link is invalid or has expired")
 		return
 	}
-	u, err := api.Store.GetUserByID(rt.UserID)
+	u, err := api.Users.GetUserByID(rt.UserID)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "reset link is invalid or has expired")
 		return
@@ -360,18 +363,18 @@ func (api *API) handleResetConfirm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u.PasswordHash = newHash
-	if err := api.Store.UpdateUser(u); err != nil {
+	if err := api.Users.UpdateUser(u); err != nil {
 		writeError(w, http.StatusInternalServerError, "could not reset password")
 		return
 	}
-	_ = api.Store.DeleteResetToken(hash) // one-time use
+	_ = api.Reset.DeleteResetToken(hash) // one-time use
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 // --- Admin example ---
 
 func (api *API) handleListUsers(w http.ResponseWriter, r *http.Request) {
-	users := api.Store.ListUsers()
+	users := api.Users.ListUsers()
 	out := make([]publicUserView, 0, len(users))
 	for _, u := range users {
 		out = append(out, publicUser(u))
@@ -390,17 +393,17 @@ func (api *API) handleChangeUserRole(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "you cannot change your own role")
 		return
 	}
-	u, err := api.Store.GetUserByID(req.UserID)
+	u, err := api.Users.GetUserByID(req.UserID)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "user not found")
 		return
 	}
-	if u.Role == store.RoleAdmin && req.Role == store.RoleUser && api.Store.CountAdmins() == 1 {
+	if u.Role == store.RoleAdmin && req.Role == store.RoleUser && api.Users.CountAdmins() == 1 {
 		writeError(w, http.StatusBadRequest, "cannot remove the last active administrator")
 		return
 	}
 	u.Role = req.Role
-	if err := api.Store.UpdateUser(u); err != nil {
+	if err := api.Users.UpdateUser(u); err != nil {
 		writeError(w, http.StatusInternalServerError, "could not update user role")
 		return
 	}
@@ -418,17 +421,17 @@ func (api *API) handleChangeUserStatus(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "you cannot disable your own account")
 		return
 	}
-	u, err := api.Store.GetUserByID(req.UserID)
+	u, err := api.Users.GetUserByID(req.UserID)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "user not found")
 		return
 	}
-	if req.Disabled && u.Role == store.RoleAdmin && !u.Disabled && api.Store.CountAdmins() == 1 {
+	if req.Disabled && u.Role == store.RoleAdmin && !u.Disabled && api.Users.CountAdmins() == 1 {
 		writeError(w, http.StatusBadRequest, "cannot disable the last active administrator")
 		return
 	}
 	u.Disabled = req.Disabled
-	if err := api.Store.UpdateUser(u); err != nil {
+	if err := api.Users.UpdateUser(u); err != nil {
 		writeError(w, http.StatusInternalServerError, "could not update user status")
 		return
 	}
@@ -446,7 +449,7 @@ func (api *API) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "you cannot delete your own account")
 		return
 	}
-	if err := api.Store.DeleteUser(req.UserID); err != nil {
+	if err := api.Users.DeleteUser(req.UserID); err != nil {
 		if err == store.ErrNotFound {
 			writeError(w, http.StatusNotFound, "user not found")
 			return

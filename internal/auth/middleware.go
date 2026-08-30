@@ -29,7 +29,7 @@ func UserFromContext(ctx context.Context) *store.User {
 
 // Service bundles the store with the middleware/handlers that operate on it.
 type Service struct {
-	Store *store.Store
+	Store Repository
 	// Secure controls the Secure flag on cookies. Set true in production
 	// (HTTPS). Left false only for local http:// development.
 	Secure bool

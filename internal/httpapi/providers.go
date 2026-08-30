@@ -26,7 +26,7 @@ func (api *API) RegisterProviderRoutes(mux *http.ServeMux) {
 
 func (api *API) handleListProviders(w http.ResponseWriter, r *http.Request) {
 	admin := r.URL.Path == "/api/admin/providers"
-	settings := api.Store.ListProviderSettings()
+	settings := api.ProviderDB.ListProviderSettings()
 	out := make([]providerView, 0, len(supportedProviders))
 	for _, item := range supportedProviders {
 		configured := api.providerConfigured(item.ID)
@@ -56,7 +56,7 @@ func (api *API) handleSetProvider(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "provider credentials are not configured")
 		return
 	}
-	if err := api.Store.SetProviderEnabled(req.Provider, req.Enabled); err != nil {
+	if err := api.ProviderDB.SetProviderEnabled(req.Provider, req.Enabled); err != nil {
 		writeError(w, http.StatusInternalServerError, "could not update provider")
 		return
 	}
@@ -81,7 +81,7 @@ func (api *API) providerEnabled(id string) bool {
 	if !api.providerConfigured(id) {
 		return false
 	}
-	enabled, explicit := api.Store.ProviderSetting(id)
+	enabled, explicit := api.ProviderDB.ProviderSetting(id)
 	if explicit {
 		return enabled
 	}
