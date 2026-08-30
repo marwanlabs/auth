@@ -165,6 +165,17 @@ func (s *Service) authenticate(r *http.Request) (*store.User, string, bool) {
 	return user, sess.ID, true
 }
 
+// AuthenticatedUser returns the user behind r's session cookie, or nil if
+// the request is unauthenticated. Callers use it to identify the actor for
+// audit events without reusing the request-lifetime context.
+func (s *Service) AuthenticatedUser(r *http.Request) *store.User {
+	u, _, ok := s.authenticate(r)
+	if !ok {
+		return nil
+	}
+	return u
+}
+
 func splitCookie(v string) (id, token string, ok bool) {
 	for i := 0; i < len(v); i++ {
 		if v[i] == '.' {

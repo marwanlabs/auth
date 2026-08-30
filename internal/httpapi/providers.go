@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"authserver/internal/auth"
 	"authserver/internal/providers"
 	"authserver/internal/store"
 	"net/http"
@@ -25,7 +26,8 @@ var supportedProviders = []struct{ ID, Name string }{
 func (api *API) RegisterProviderRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/auth/providers", api.handleListProviders)
 	mux.HandleFunc("GET /api/admin/providers", api.Auth.RequireRole(store.RoleAdmin, api.handleListProviders))
-	mux.HandleFunc("POST /api/admin/providers", api.Auth.RequireRole(store.RoleAdmin, api.handleSetProvider))
+	providerLimiter := auth.NewRateLimiter(adminRateLimit, adminRateWindow)
+	mux.HandleFunc("POST /api/admin/providers", api.adminMutation("admin.set_provider", providerLimiter, api.handleSetProvider))
 }
 
 func (api *API) handleListProviders(w http.ResponseWriter, r *http.Request) {

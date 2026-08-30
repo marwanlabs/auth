@@ -3,7 +3,9 @@
 package httpapi
 
 import (
+	"bytes"
 	"encoding/json"
+	"io"
 	"log"
 	"net/http"
 	"strings"
@@ -30,6 +32,13 @@ func New(a *auth.Service, users UserRepository, sessions SessionRepository, rese
 	return &API{Auth: a, Users: users, Sessions: sessions, Reset: reset, ProviderDB: providerDB, Audit: audit, Providers: make(map[string]providers.Provider), Social: socialauth.New(social)}
 }
 
+// Admin mutation rate limit: each sensitive administration action is capped
+// per actor identity plus client address within one minute.
+const (
+	adminRateLimit  = 30
+	adminRateWindow = time.Minute
+)
+
 // Register attaches all routes to mux.
 func (api *API) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /healthz", api.handleHealth)
@@ -38,6 +47,9 @@ func (api *API) Register(mux *http.ServeMux) {
 	signupLimiter := auth.NewRateLimiter(authRateLimit, authRateWindow)
 	loginLimiter := auth.NewRateLimiter(authRateLimit, authRateWindow)
 	resetLimiter := auth.NewRateLimiter(authRateLimit, authRateWindow)
+	adminRoleLimiter := auth.NewRateLimiter(adminRateLimit, adminRateWindow)
+	adminStatusLimiter := auth.NewRateLimiter(adminRateLimit, adminRateWindow)
+	adminDeleteLimiter := auth.NewRateLimiter(adminRateLimit, adminRateWindow)
 
 	mux.HandleFunc("POST /api/signup", signupLimiter.Middleware(clientIPKey, api.handleSignup))
 	mux.HandleFunc("POST /api/login", loginLimiter.Middleware(clientIPKey, api.handleLogin))
@@ -49,11 +61,13 @@ func (api *API) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/password-reset/request", resetLimiter.Middleware(clientIPKey, api.handleResetRequest))
 	mux.HandleFunc("POST /api/password-reset/confirm", resetLimiter.Middleware(clientIPKey, api.handleResetConfirm))
 
-	// Example of an admin-only route — extend as your app needs.
+	// Admin routes. Mutations are rate limited by actor identity and client
+	// address, and every attempt (allowed, denied, or rate-limited) is
+	// durably audited via adminMutation.
 	mux.HandleFunc("GET /api/admin/users", api.Auth.RequireRole(store.RoleAdmin, api.handleListUsers))
-	mux.HandleFunc("POST /api/admin/users/role", api.Auth.RequireRole(store.RoleAdmin, api.handleChangeUserRole))
-	mux.HandleFunc("POST /api/admin/users/status", api.Auth.RequireRole(store.RoleAdmin, api.handleChangeUserStatus))
-	mux.HandleFunc("POST /api/admin/users/delete", api.Auth.RequireRole(store.RoleAdmin, api.handleDeleteUser))
+	mux.HandleFunc("POST /api/admin/users/role", api.adminMutation("admin.change_user_role", adminRoleLimiter, api.handleChangeUserRole))
+	mux.HandleFunc("POST /api/admin/users/status", api.adminMutation("admin.change_user_status", adminStatusLimiter, api.handleChangeUserStatus))
+	mux.HandleFunc("POST /api/admin/users/delete", api.adminMutation("admin.delete_user", adminDeleteLimiter, api.handleDeleteUser))
 }
 
 func (api *API) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -65,6 +79,116 @@ func clientIPKey(r *http.Request) string {
 		return fwd
 	}
 	return r.RemoteAddr
+}
+
+// adminActorKey keys admin rate-limit slots by the authenticated actor's
+// identity plus the client address, so one compromised session cannot change
+// users or provider availability at unlimited rate.
+func adminActorKey(r *http.Request) string {
+	actor := ""
+	if u := auth.UserFromContext(r.Context()); u != nil {
+		actor = u.ID
+	}
+	return actor + "|" + clientIPKey(r)
+}
+
+// adminMutation guards a sensitive admin mutation. It requires the admin
+// role, rate-limits excess requests by actor identity and client address
+// before the handler runs, and records an audit event with the action outcome
+// whether the request was performed, rejected, or rate-limited. Rejected
+// requests never reach the handler, so they cannot change users or provider
+// availability, and every attempt leaves a durable secret-free trail.
+func (api *API) adminMutation(eventType string, limiter *auth.RateLimiter, next http.HandlerFunc) http.HandlerFunc {
+	guarded := api.Auth.RequireRole(store.RoleAdmin, limiter.Middleware(adminActorKey, next))
+	return func(w http.ResponseWriter, r *http.Request) {
+		target := adminTarget(r)
+		res := &statusRecorder{ResponseWriter: w}
+		guarded(res, r)
+		api.recordAdminEvent(r, eventType, target, adminOutcome(res.status))
+	}
+}
+
+// statusRecorder forwards response writes to the real writer and remembers
+// the first status code, which the admin audit wrapper uses to derive an
+// event outcome.
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (s *statusRecorder) WriteHeader(code int) {
+	if s.status == 0 {
+		s.status = code
+	}
+	s.ResponseWriter.WriteHeader(code)
+}
+
+func (s *statusRecorder) Write(b []byte) (int, error) {
+	if s.status == 0 {
+		s.status = http.StatusOK
+	}
+	return s.ResponseWriter.Write(b)
+}
+
+func adminOutcome(status int) string {
+	switch {
+	case status >= 200 && status < 300:
+		return "success"
+	case status == http.StatusTooManyRequests:
+		return "rate_limited"
+	case status == http.StatusUnauthorized || status == http.StatusForbidden:
+		return "forbidden"
+	default:
+		return "failure"
+	}
+}
+
+// adminTarget extracts the affected user or provider id from a request body
+// without consuming it, so the mutation handler can still process the
+// request.
+func adminTarget(r *http.Request) string {
+	if r.Body == nil {
+		return ""
+	}
+	raw, err := io.ReadAll(io.LimitReader(r.Body, 64<<10))
+	if err != nil {
+		return ""
+	}
+	r.Body = io.NopCloser(bytes.NewReader(raw))
+	var req struct {
+		UserID   string `json:"user_id"`
+		Provider string `json:"provider"`
+	}
+	if err := json.Unmarshal(raw, &req); err != nil {
+		return ""
+	}
+	if req.UserID != "" {
+		return req.UserID
+	}
+	return req.Provider
+}
+
+func (api *API) recordAdminEvent(r *http.Request, eventType, target, outcome string) {
+	if api.Audit == nil {
+		return
+	}
+	actorID, actorEmail := "", ""
+	if u := api.Auth.AuthenticatedUser(r); u != nil {
+		actorID, actorEmail = u.ID, u.Email
+	}
+	if err := api.Audit.CreateAuditEvent(&store.AuditEvent{
+		ID:         mustID(),
+		Type:       eventType,
+		Outcome:    outcome,
+		Timestamp:  time.Now(),
+		ActorID:    actorID,
+		ActorEmail: actorEmail,
+		Target:     target,
+		ClientIP:   clientIPKey(r),
+		UserAgent:  r.UserAgent(),
+	}); err != nil {
+		log.Printf("record admin audit event: %v", err)
+	}
 }
 
 // --- request/response helpers ---

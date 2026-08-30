@@ -60,7 +60,9 @@ type ResetToken struct {
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
-// AuditEvent records an authentication outcome without request secrets.
+// AuditEvent records an authentication or administration outcome without
+// request secrets. Target identifies the affected user or provider when the
+// event concerns one.
 type AuditEvent struct {
 	ID         string    `json:"id"`
 	Type       string    `json:"type"`
@@ -68,6 +70,7 @@ type AuditEvent struct {
 	Timestamp  time.Time `json:"timestamp"`
 	ActorID    string    `json:"actor_id,omitempty"`
 	ActorEmail string    `json:"actor_email,omitempty"`
+	Target     string    `json:"target,omitempty"`
 	ClientIP   string    `json:"client_ip,omitempty"`
 	UserAgent  string    `json:"user_agent,omitempty"`
 }
