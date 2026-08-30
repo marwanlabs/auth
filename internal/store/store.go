@@ -182,12 +182,24 @@ func (s *Store) Snapshot() Snapshot {
 	for k, v := range s.d.Providers {
 		out.Providers[k] = v
 	}
-	sort.Slice(out.Users, func(i, j int) bool { return out.Users[i].ID < out.Users[j].ID })
-	sort.Slice(out.Sessions, func(i, j int) bool { return out.Sessions[i].ID < out.Sessions[j].ID })
-	sort.Slice(out.ResetTokens, func(i, j int) bool { return out.ResetTokens[i].TokenHash < out.ResetTokens[j].TokenHash })
-	sort.Slice(out.OAuth, func(i, j int) bool { return out.OAuth[i].ID < out.OAuth[j].ID })
-	sort.Slice(out.Identities, func(i, j int) bool { return out.Identities[i].ID < out.Identities[j].ID })
-	sort.Slice(out.AuditEvents, func(i, j int) bool { return out.AuditEvents[i].ID < out.AuditEvents[j].ID })
+	sort.Slice(out.Users, func(i, j int) bool {
+		return out.Users[i] != nil && (out.Users[j] == nil || out.Users[i].ID < out.Users[j].ID)
+	})
+	sort.Slice(out.Sessions, func(i, j int) bool {
+		return out.Sessions[i] != nil && (out.Sessions[j] == nil || out.Sessions[i].ID < out.Sessions[j].ID)
+	})
+	sort.Slice(out.ResetTokens, func(i, j int) bool {
+		return out.ResetTokens[i] != nil && (out.ResetTokens[j] == nil || out.ResetTokens[i].TokenHash < out.ResetTokens[j].TokenHash)
+	})
+	sort.Slice(out.OAuth, func(i, j int) bool {
+		return out.OAuth[i] != nil && (out.OAuth[j] == nil || out.OAuth[i].ID < out.OAuth[j].ID)
+	})
+	sort.Slice(out.Identities, func(i, j int) bool {
+		return out.Identities[i] != nil && (out.Identities[j] == nil || out.Identities[i].ID < out.Identities[j].ID)
+	})
+	sort.Slice(out.AuditEvents, func(i, j int) bool {
+		return out.AuditEvents[i] != nil && (out.AuditEvents[j] == nil || out.AuditEvents[i].ID < out.AuditEvents[j].ID)
+	})
 	return out
 }
 
@@ -250,7 +262,7 @@ func (s *Store) migrateLegacyIdentities() error {
 	defer s.mu.Unlock()
 	changed := false
 	for _, user := range s.d.Users {
-		if user.GoogleID == "" {
+		if user == nil || user.GoogleID == "" {
 			continue
 		}
 		found := false

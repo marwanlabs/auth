@@ -14,7 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/stdlib"
 )
 
-func TestValidateSnapshotReportsEveryCategoryAndUnsafeOAuth(t *testing.T) {
+func TestValidateSnapshotReportsEveryCategoryAndInvalidOAuth(t *testing.T) {
 	now := time.Now()
 	snapshot := store.Snapshot{
 		Users:       []*store.User{{ID: "u", Email: "u@example.com", CreatedAt: now, PasswordHash: "hash"}, {ID: "", Email: "bad"}},
@@ -23,7 +23,7 @@ func TestValidateSnapshotReportsEveryCategoryAndUnsafeOAuth(t *testing.T) {
 		ResetTokens: []*store.ResetToken{{TokenHash: "r", UserID: "u"}, {TokenHash: "bad", UserID: "missing"}},
 		Providers:   map[string]bool{"github": true, "": false},
 		AuditEvents: []*store.AuditEvent{{ID: "a", Type: "login", Outcome: "success"}, {ID: "bad"}},
-		OAuth:       []*store.OAuthTransaction{{ID: "o", Provider: "github", PKCEVerifier: "private", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, {ID: "safe", Provider: "github", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}},
+		OAuth:       []*store.OAuthTransaction{{ID: "o", Provider: "github", PKCEVerifier: "private", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, {ID: "invalid", Provider: "github", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}},
 	}
 	var report ImportReport
 	validateSnapshot(snapshot, &report)
@@ -44,7 +44,7 @@ func TestValidateSnapshotReportsEveryCategoryAndUnsafeOAuth(t *testing.T) {
 		t.Errorf("credentials migrated = %d, want 1", report.Credentials.Migrated)
 	}
 	if report.OAuthTransactions.Migrated != 1 {
-		t.Errorf("safe OAuth migrated = %d, want 1", report.OAuthTransactions.Migrated)
+		t.Errorf("valid OAuth migrated = %d, want 1", report.OAuthTransactions.Migrated)
 	}
 	if report.OAuthTransactions.Rejections[0].Reason == "" {
 		t.Error("OAuth rejection has no reason")

@@ -1,12 +1,28 @@
 package store_test
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"authserver/internal/store"
 )
+
+func TestSnapshotHandlesNullRecords(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "store.json")
+	if err := os.WriteFile(path, []byte(`{"users":{"bad":null},"sessions":{"bad":null}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	s, err := store.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot := s.Snapshot()
+	if len(snapshot.Users) != 1 || snapshot.Users[0] != nil || len(snapshot.Sessions) != 1 || snapshot.Sessions[0] != nil {
+		t.Fatalf("snapshot = %#v, want null records preserved", snapshot)
+	}
+}
 
 func TestAuditEventsPersistAcrossOpen(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "store.json")

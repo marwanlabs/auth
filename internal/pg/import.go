@@ -54,15 +54,15 @@ func (r *ImportReport) category(name, key, reason string) *CategoryReport {
 
 func ImportJSON(ctx context.Context, db *sql.DB, path string) (ImportReport, error) {
 	var report ImportReport
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return report, fmt.Errorf("read JSON store: %w", err)
-	}
 	source, err := store.Open(path)
 	if err != nil {
 		return report, err
 	}
 	snapshot := source.Snapshot()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return report, fmt.Errorf("read JSON store after load: %w", err)
+	}
 	digest := fmt.Sprintf("%x", sha256.Sum256(raw))
 	validateSnapshot(snapshot, &report)
 	if hasRejections(report) {
@@ -185,8 +185,8 @@ func validateSnapshot(s store.Snapshot, r *ImportReport) {
 			r.category("oauth_transactions", keyOAuth(v), "missing required field")
 			continue
 		}
-		if v.PKCEVerifier != "" {
-			r.category("oauth_transactions", v.ID, "PKCE verifier is raw private material and is not imported")
+		if v.PKCEVerifier == "" {
+			r.category("oauth_transactions", v.ID, "missing PKCE verifier")
 			continue
 		}
 		r.OAuthTransactions.Migrated++
