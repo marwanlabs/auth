@@ -50,9 +50,13 @@ func main() {
 	githubClientID := os.Getenv("AUTH_GITHUB_CLIENT_ID")
 	githubClientSecret := os.Getenv("AUTH_GITHUB_CLIENT_SECRET")
 	githubRedirectURL := getenv("AUTH_GITHUB_REDIRECT_URL", "http://localhost:8090/api/auth/github/callback")
+	microsoftClientID := os.Getenv("AUTH_MICROSOFT_CLIENT_ID")
+	microsoftClientSecret := os.Getenv("AUTH_MICROSOFT_CLIENT_SECRET")
+	microsoftRedirectURL := getenv("AUTH_MICROSOFT_REDIRECT_URL", "http://localhost:8090/api/auth/microsoft/callback")
 	api.Providers["google"] = providers.NewGoogle(googleClientID, googleClientSecret, googleRedirectURL)
 	api.Providers["facebook"] = providers.NewFacebook(facebookClientID, facebookClientSecret, facebookRedirectURL)
 	api.Providers["github"] = providers.NewGitHub(githubClientID, githubClientSecret, githubRedirectURL)
+	api.Providers["microsoft"] = providers.NewMicrosoft(microsoftClientID, microsoftClientSecret, microsoftRedirectURL)
 
 	mux := http.NewServeMux()
 	api.Register(mux)

@@ -183,6 +183,22 @@ For the local Caddy setup, use
 `https://localhost:8443/api/auth/google/callback` as the redirect URL and add
 that exact URL to the Google OAuth client.
 
+### Microsoft sign-in
+
+Register an application in the Microsoft Entra admin center, add the callback
+URL, create a client secret, and grant delegated `User.Read` permission. Use
+the common tenant to support personal and work/school accounts:
+
+```
+AUTH_MICROSOFT_CLIENT_ID=...
+AUTH_MICROSOFT_CLIENT_SECRET=...
+AUTH_MICROSOFT_REDIRECT_URL=http://localhost:8090/api/auth/microsoft/callback
+```
+
+Then enable Microsoft from the admin dashboard under Sign-in providers. For
+local HTTPS, use
+`https://localhost:8443/api/auth/microsoft/callback` as the callback URL.
+
 ## API reference
 
 | Method | Path                          | Auth required | Description                       |
@@ -195,6 +211,8 @@ that exact URL to the Google OAuth client.
 | GET    | `/api/auth/facebook/callback`  | No             | Complete Facebook sign-in           |
 | GET    | `/api/auth/github`              | No             | Start GitHub sign-in                |
 | GET    | `/api/auth/github/callback`     | No             | Complete GitHub sign-in             |
+| GET    | `/api/auth/microsoft`           | No             | Start Microsoft sign-in             |
+| GET    | `/api/auth/microsoft/callback`  | No             | Complete Microsoft sign-in          |
 | GET    | `/api/auth/providers`          | No             | List enabled social providers      |
 | POST   | `/api/logout`                 | Yes            | Clear the current session cookie   |
 | GET    | `/api/me`                     | Yes            | Current user info                  |
