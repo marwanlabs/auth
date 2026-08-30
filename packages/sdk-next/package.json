@@ -1,0 +1,33 @@
+{
+  "name": "@authserver/sdk-next",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Next.js App Router integration for authserver",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./server": {
+      "types": "./dist/server.d.ts",
+      "import": "./dist/server.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "@authserver/sdk": "^0.1.0",
+    "next": ">=14"
+  },
+  "devDependencies": {
+    "@authserver/sdk": "file:../sdk",
+    "@types/node": "^20.0.0",
+    "next": ">=14",
+    "typescript": "^5.0.0"
+  }
+}

@@ -83,6 +83,37 @@ Back up the configured `AUTH_DATA_FILE` regularly.
 The `/healthz` endpoint returns `{"status":"ok"}` and can be used by a
 service manager or monitoring system.
 
+## TypeScript SDK
+
+The `packages/sdk/` directory contains the browser-friendly `@authserver/sdk`
+package, `packages/sdk-react/` contains the optional React provider and hooks,
+and `packages/sdk-next/` contains the Next.js App Router integration. From a
+React application, install or link the relevant packages and create a client with
+`baseUrl: "/api"` when the frontend is served through the same host.
+
+The `demos/sdk-demo/` directory is a small Vite application showing the SDK in use.
+With the Go server running on port 8090:
+
+```
+cd demos/sdk-demo
+npm install
+npm run dev
+```
+
+Open http://localhost:5173. The Vite proxy forwards `/api` requests to the Go
+server, so browser cookies and CSRF protection work as they do in production.
+
+The `demos/sdk-next-demo/` directory is a Next.js App Router example showing
+SSR session checks and browser login. Run it with:
+
+```
+cd demos/sdk-next-demo
+npm install
+npm run dev
+```
+
+Then open http://localhost:3000.
+
 ### Environment variables
 
 | Variable               | Default            | Purpose                                                   |

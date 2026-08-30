@@ -19,6 +19,8 @@
             pkgs.gopls
             pkgs.gotools
             pkgs.caddy
+            pkgs.nodejs
+            pkgs.typescript
           ];
 
           shellHook = ''

@@ -1,0 +1,30 @@
+:root { font-family: Inter, ui-sans-serif, system-ui, sans-serif; color: #20231f; background: #f4f5f1; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+button, input { font: inherit; }
+button { border: 0; border-radius: 8px; padding: 10px 14px; background: #2f5d4f; color: white; cursor: pointer; font-weight: 600; }
+button:hover { background: #24473c; }
+button.secondary { background: white; color: #2f5d4f; border: 1px solid #d9ddd6; }
+.shell { width: min(760px, calc(100% - 32px)); margin: 0 auto; padding: 56px 0; }
+.hero, .profile { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.hero { margin-bottom: 28px; }
+h1, h2, p { margin-top: 0; }
+h1 { margin-bottom: 8px; font-size: clamp(30px, 6vw, 48px); letter-spacing: -.04em; }
+h2 { margin-bottom: 18px; font-size: 18px; }
+.muted { color: #70766e; }
+.eyebrow { margin-bottom: 8px; color: #2f5d4f; font-size: 12px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+.card { margin-bottom: 18px; padding: 24px; border: 1px solid #dfe2dc; border-radius: 14px; background: white; box-shadow: 0 8px 24px #2733260b; }
+.narrow { max-width: 430px; margin: 0 auto; }
+label { display: block; margin: 16px 0; font-size: 13px; font-weight: 600; }
+input { display: block; width: 100%; margin-top: 7px; padding: 11px 12px; border: 1px solid #d9ddd6; border-radius: 8px; }
+form button { width: 100%; margin-top: 4px; }
+.tabs { display: flex; gap: 6px; margin: -4px -4px 20px; }
+.tab { flex: 1; background: transparent; color: #70766e; }
+.tab.active { background: #edf3ee; color: #2f5d4f; }
+.notice { padding: 12px 14px; border-radius: 8px; background: #edf3ee; color: #2f5d4f; }
+.error { margin: 14px 0 0; padding: 10px 12px; border-radius: 8px; background: #fbeceb; color: #a3352c; font-size: 13px; }
+.role { padding: 5px 10px; border-radius: 99px; background: #edf3ee; color: #2f5d4f; font-size: 12px; font-weight: 700; text-transform: uppercase; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.user-list { margin-top: 20px; border-top: 1px solid #e5e7e2; }
+.user-row { display: flex; justify-content: space-between; gap: 12px; padding: 13px 0; border-bottom: 1px solid #e5e7e2; font-size: 14px; }
+@media (max-width: 520px) { .shell { padding-top: 32px; } .hero { align-items: flex-start; flex-direction: column; } .hero button { width: 100%; } }
