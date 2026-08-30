@@ -423,9 +423,10 @@ func (s *Store) DeleteSession(id string) error {
 func (s *Store) ListSessionsForUser(userID string) ([]*Session, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	now := time.Now()
 	var out []*Session
 	for _, sess := range s.d.Sessions {
-		if sess.UserID == userID {
+		if sess.UserID == userID && !now.After(sess.ExpiresAt) {
 			out = append(out, sess)
 		}
 	}

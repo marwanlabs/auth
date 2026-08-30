@@ -1,5 +1,12 @@
 // Package contract contains persistence behavior tests shared by store
 // implementations.
+//
+// The suite is factory-based: callers supply a Factory that returns a fresh
+// Repository for each subtest, so the same tests run unchanged against the
+// JSON-backed reference store today and a database-backed store later (for
+// example by returning the repository over a test database). Durability is
+// covered separately by RunDurability, whose open function returns a fresh
+// repository over the same persistent storage.
 package contract
 
 import (
@@ -261,6 +268,13 @@ func testExpirationCleanup(t *testing.T, r Repository) {
 	}
 	if err := r.CreateResetToken(&store.ResetToken{TokenHash: "active-reset", UserID: "user", ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
 		t.Fatal(err)
+	}
+	sessions, err := r.ListSessionsForUser("user")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 1 || sessions[0].ID != "active-session" {
+		t.Fatalf("active session list = %v, want only the unexpired session", sessions)
 	}
 	if err := r.DeleteExpiredSessions(); err != nil {
 		t.Fatal(err)

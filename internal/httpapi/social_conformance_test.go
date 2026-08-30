@@ -31,7 +31,13 @@ func (p *conformanceProvider) Resolve(context.Context, string) (providers.Identi
 	return p.identity, p.resolveErr
 }
 
-func testConformanceAPI(t testing.TB) (*API, *store.Store) {
+// identityStore is the minimal persistence capability the conformance test
+// observes to verify that a completed sign-in linked the social identity.
+type identityStore interface {
+	GetIdentity(provider, subject string) (*store.SocialIdentity, error)
+}
+
+func testConformanceAPI(t testing.TB) (*API, identityStore) {
 	t.Helper()
 	s, err := store.Open(t.TempDir() + "/store.json")
 	if err != nil {
@@ -40,19 +46,19 @@ func testConformanceAPI(t testing.TB) (*API, *store.Store) {
 	return New(&auth.Service{Store: s}, s, s, s, s, s, s), s
 }
 
-func testMux(t testing.TB, provider providers.Provider) (*API, *http.ServeMux) {
+func testMux(t testing.TB, provider providers.Provider) (*API, identityStore, *http.ServeMux) {
 	t.Helper()
-	api, s := testConformanceAPI(t)
+	api, db := testConformanceAPI(t)
 	api.Providers[provider.ID()] = provider
 	if provider.Configured() {
-		if err := s.SetProviderEnabled(provider.ID(), true); err != nil {
+		if err := api.ProviderDB.SetProviderEnabled(provider.ID(), true); err != nil {
 			t.Fatal(err)
 		}
 	}
 	mux := http.NewServeMux()
 	api.Register(mux)
 	api.RegisterSocialRoutes(mux)
-	return api, mux
+	return api, db, mux
 }
 
 func supportedProviderIDs() []string {
@@ -69,7 +75,7 @@ func TestOAuthProviderConformance(t *testing.T) {
 			provider := &conformanceProvider{id: id, configured: true, identity: providers.Identity{
 				Provider: id, Subject: "subject-" + id, Email: " Person@Example.COM ", EmailVerified: true,
 			}}
-			api, mux := testMux(t, provider)
+			_, db, mux := testMux(t, provider)
 			start := httptest.NewRequest(http.MethodGet, "/api/auth/"+id, nil)
 			startResponse := httptest.NewRecorder()
 			mux.ServeHTTP(startResponse, start)
@@ -87,10 +93,6 @@ func TestOAuthProviderConformance(t *testing.T) {
 			mux.ServeHTTP(callbackResponse, callback)
 			if callbackResponse.Code != http.StatusFound || callbackResponse.Header().Get("Location") != "/dashboard.html" {
 				t.Fatalf("callback = %d %q, want dashboard redirect", callbackResponse.Code, callbackResponse.Header().Get("Location"))
-			}
-			db, ok := api.Users.(*store.Store)
-			if !ok {
-				t.Fatal("conformance API does not use a JSON store")
 			}
 			if _, err := db.GetIdentity(id, "subject-"+id); err != nil {
 				t.Fatalf("identity was not persisted: %v", err)
@@ -115,7 +117,7 @@ func TestOAuthProviderConformance(t *testing.T) {
 
 		t.Run(id+" cancellation", func(t *testing.T) {
 			provider := &conformanceProvider{id: id, configured: true}
-			_, mux := testMux(t, provider)
+			_, _, mux := testMux(t, provider)
 			startResponse := httptest.NewRecorder()
 			mux.ServeHTTP(startResponse, httptest.NewRequest(http.MethodGet, "/api/auth/"+id, nil))
 			stateCookie := startResponse.Result().Cookies()[0]
@@ -130,7 +132,7 @@ func TestOAuthProviderConformance(t *testing.T) {
 
 		t.Run(id+" invalid email", func(t *testing.T) {
 			provider := &conformanceProvider{id: id, configured: true, identity: providers.Identity{Provider: id, Subject: "subject", Email: "not-an-email", EmailVerified: true}}
-			_, mux := testMux(t, provider)
+			_, _, mux := testMux(t, provider)
 			startResponse := httptest.NewRecorder()
 			mux.ServeHTTP(startResponse, httptest.NewRequest(http.MethodGet, "/api/auth/"+id, nil))
 			stateCookie := startResponse.Result().Cookies()[0]
@@ -145,7 +147,7 @@ func TestOAuthProviderConformance(t *testing.T) {
 
 		t.Run(id+" unavailable", func(t *testing.T) {
 			provider := &conformanceProvider{id: id}
-			_, mux := testMux(t, provider)
+			_, _, mux := testMux(t, provider)
 			response := httptest.NewRecorder()
 			mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/auth/"+id, nil))
 			if response.Code != http.StatusServiceUnavailable {
@@ -157,7 +159,7 @@ func TestOAuthProviderConformance(t *testing.T) {
 
 func TestOAuthCallbackRejectsInvalidState(t *testing.T) {
 	provider := &conformanceProvider{id: "google", configured: true}
-	_, mux := testMux(t, provider)
+	_, _, mux := testMux(t, provider)
 	response := httptest.NewRecorder()
 	mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/auth/google/callback?state=wrong&code=code", nil))
 	if response.Code != http.StatusFound || !strings.Contains(response.Header().Get("Location"), "invalid+sign-in+state") {
@@ -167,7 +169,7 @@ func TestOAuthCallbackRejectsInvalidState(t *testing.T) {
 
 func TestOAuthCallbackRejectsProviderError(t *testing.T) {
 	provider := &conformanceProvider{id: "google", configured: true, resolveErr: context.Canceled}
-	_, mux := testMux(t, provider)
+	_, _, mux := testMux(t, provider)
 	startResponse := httptest.NewRecorder()
 	mux.ServeHTTP(startResponse, httptest.NewRequest(http.MethodGet, "/api/auth/google", nil))
 	stateCookie := startResponse.Result().Cookies()[0]

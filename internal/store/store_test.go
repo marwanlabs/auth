@@ -1,18 +1,20 @@
-package store
+package store_test
 
 import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"authserver/internal/store"
 )
 
 func TestAuditEventsPersistAcrossOpen(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "store.json")
-	s, err := Open(path)
+	s, err := store.Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := &AuditEvent{
+	want := &store.AuditEvent{
 		ID: "event-1", Type: "login", Outcome: "failure", Timestamp: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
 		ActorEmail: "person@example.com", ClientIP: "192.0.2.1", UserAgent: "test-agent",
 	}
@@ -20,11 +22,17 @@ func TestAuditEventsPersistAcrossOpen(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	reopened, err := Open(path)
+	reopened, err := store.Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := reopened.d.AuditEvents[want.ID]; *got != *want {
+	var got *store.AuditEvent
+	for _, event := range reopened.ListAuditEvents() {
+		if event.ID == want.ID {
+			got = event
+		}
+	}
+	if got == nil || *got != *want {
 		t.Fatalf("persisted event = %+v, want %+v", got, want)
 	}
 }
