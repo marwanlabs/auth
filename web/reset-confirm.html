@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Choose a new password</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="center-page">
+    <form class="card" id="confirm-form" novalidate>
+      <h1>Choose a new password</h1>
+      <p class="subtitle">This link is only valid for one hour.</p>
+
+      <label for="password">New password</label>
+      <input type="password" id="password" name="password" autocomplete="new-password" minlength="10" required>
+
+      <button type="submit" id="submit-btn">Update password</button>
+      <div class="error-box" id="error-box" hidden></div>
+
+      <p class="footer-link"><a href="/login.html">Back to sign in</a></p>
+    </form>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script>
+    const form = document.getElementById('confirm-form');
+    const errorBox = document.getElementById('error-box');
+    const submitBtn = document.getElementById('submit-btn');
+    const token = new URLSearchParams(window.location.search).get('token') || '';
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      errorBox.hidden = true;
+      if (!token) {
+        showError(errorBox, new Error('Missing or invalid reset link.'));
+        return;
+      }
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Updating…';
+      try {
+        await Auth.confirmReset(token, form.password.value);
+        window.location.href = '/login.html';
+      } catch (err) {
+        showError(errorBox, err);
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Update password';
+      }
+    });
+  </script>
+</body>
+</html>

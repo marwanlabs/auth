@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Redirecting…</title>
+</head>
+<body>
+  <script src="/js/api.js"></script>
+  <script>
+    (async () => {
+      try {
+        await Auth.me();
+        window.location.href = '/dashboard.html';
+      } catch (_) {
+        window.location.href = '/login.html';
+      }
+    })();
+  </script>
+</body>
+</html>

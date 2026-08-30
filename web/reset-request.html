@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Reset password</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="center-page">
+    <form class="card" id="reset-form" novalidate>
+      <h1>Reset your password</h1>
+      <p class="subtitle" id="subtitle">Enter your email and we'll send you a reset link.</p>
+
+      <label for="email">Email address</label>
+      <input type="email" id="email" name="email" autocomplete="email" required>
+
+      <button type="submit" id="submit-btn">Send reset link</button>
+      <div class="error-box" id="error-box" hidden></div>
+
+      <p class="footer-link"><a href="/login.html">Back to sign in</a></p>
+    </form>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script>
+    const form = document.getElementById('reset-form');
+    const errorBox = document.getElementById('error-box');
+    const submitBtn = document.getElementById('submit-btn');
+    const subtitle = document.getElementById('subtitle');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      errorBox.hidden = true;
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Sending…';
+      try {
+        const res = await Auth.requestReset(form.email.value);
+        subtitle.textContent = res.message;
+        form.email.disabled = true;
+        submitBtn.hidden = true;
+      } catch (err) {
+        showError(errorBox, err);
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Send reset link';
+      }
+    });
+  </script>
+</body>
+</html>

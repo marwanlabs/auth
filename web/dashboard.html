@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="topbar">
+    <span class="brand">Your app</span>
+    <button class="secondary" id="logout-btn" style="width:auto;margin:0;padding:8px 14px;">Sign out</button>
+  </div>
+
+  <main class="container">
+    <div class="panel">
+      <h2>Profile</h2>
+      <p id="profile-email">Loading…</p>
+      <p><span class="badge" id="profile-role"></span></p>
+    </div>
+
+    <div class="panel">
+      <h2>Change password</h2>
+      <form id="password-form" novalidate>
+        <label for="current_password">Current password</label>
+        <input type="password" id="current_password" autocomplete="current-password" required>
+        <label for="new_password">New password</label>
+        <input type="password" id="new_password" autocomplete="new-password" minlength="10" required>
+        <button type="submit">Update password</button>
+        <div class="error-box" id="password-error" hidden></div>
+      </form>
+    </div>
+
+    <div class="panel">
+      <h2>Active sessions</h2>
+      <p class="subtitle" style="margin-top:-8px">These are the devices currently signed in to your account.</p>
+      <div id="sessions-list">Loading…</div>
+      <div class="error-box" id="sessions-error" hidden></div>
+    </div>
+  </main>
+
+  <script src="/js/api.js"></script>
+  <script>
+    (async () => {
+      const user = await requireAuth();
+      if (!user) return;
+
+      document.getElementById('profile-email').textContent = user.email;
+      document.getElementById('profile-role').textContent = user.role;
+
+      document.getElementById('logout-btn').addEventListener('click', async () => {
+        await Auth.logout();
+        window.location.href = '/login.html';
+      });
+
+      // Password change
+      const pwForm = document.getElementById('password-form');
+      const pwError = document.getElementById('password-error');
+      pwForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        pwError.hidden = true;
+        try {
+          await Auth.changePassword(
+            document.getElementById('current_password').value,
+            document.getElementById('new_password').value
+          );
+          pwForm.reset();
+          pwError.hidden = true;
+        } catch (err) {
+          showError(pwError, err);
+        }
+      });
+
+      // Sessions
+      const sessionsList = document.getElementById('sessions-list');
+      const sessionsError = document.getElementById('sessions-error');
+
+      async function loadSessions() {
+        try {
+          const sessions = await Auth.listSessions();
+          sessionsList.innerHTML = '';
+          if (sessions.length === 0) {
+            sessionsList.textContent = 'No active sessions.';
+            return;
+          }
+          for (const s of sessions) {
+            const row = document.createElement('div');
+            row.className = 'session-row';
+            const created = new Date(s.created_at).toLocaleString();
+            row.innerHTML = `
+              <span>${s.user_agent || 'Unknown device'} &middot; ${s.ip || ''} &middot; since ${created}</span>
+            `;
+            const btn = document.createElement('button');
+            btn.className = 'danger-link';
+            btn.textContent = 'Revoke';
+            btn.addEventListener('click', async () => {
+              try {
+                await Auth.revokeSession(s.id);
+                loadSessions();
+              } catch (err) {
+                showError(sessionsError, err);
+              }
+            });
+            row.appendChild(btn);
+            sessionsList.appendChild(row);
+          }
+        } catch (err) {
+          showError(sessionsError, err);
+        }
+      }
+      loadSessions();
+    })();
+  </script>
+</body>
+</html>
