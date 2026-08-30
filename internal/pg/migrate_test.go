@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestMigrationFilesAreOrderedAndValid(t *testing.T) {
+func TestMigrationFilesAreContiguousAndValid(t *testing.T) {
 	list, err := migrations()
 	if err != nil {
 		t.Fatalf("migrations(): %v", err)
@@ -15,8 +15,8 @@ func TestMigrationFilesAreOrderedAndValid(t *testing.T) {
 	}
 	seen := make(map[int64]bool)
 	for i, m := range list {
-		if i > 0 && m.version <= list[i-1].version {
-			t.Errorf("migration %d has version %d; versions must be strictly increasing", i, m.version)
+		if m.version != int64(i+1) {
+			t.Errorf("migration %d has version %d; versions must be contiguous starting at 1", i, m.version)
 		}
 		if seen[m.version] {
 			t.Errorf("duplicate migration version %d", m.version)

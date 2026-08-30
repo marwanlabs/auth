@@ -22,8 +22,7 @@ func main() {
 	addr := getenv("AUTH_ADDR", ":8090")
 	secureCookies := getenv("AUTH_SECURE_COOKIES", "false") == "true"
 
-	// When configured, PostgreSQL owns core authentication and audit data. OAuth
-	// transactions remain on the JSON store until their owning ticket.
+	// When configured, PostgreSQL owns core authentication, audit, and OAuth data.
 	var core *pg.Store
 	dbCfg, dbCfgErr := pg.ConfigFromEnv(os.Getenv)
 	if dbCfgErr != nil {
@@ -82,12 +81,14 @@ func main() {
 	var social socialauth.Repository = s
 	var authStore auth.Repository = s
 	var auditStore store.AuditRepository = s
+	var oauthStore store.OAuthTransactionRepository = s
 	if core != nil {
 		users, sessions, reset, providerDB, social, authStore = core, core, core, core, core, core
 		auditStore = core
+		oauthStore = core
 	}
 	authSvc := &auth.Service{Store: authStore, Secure: secureCookies}
-	api := httpapi.New(authSvc, users, sessions, reset, providerDB, social, auditStore, s)
+	api := httpapi.New(authSvc, users, sessions, reset, providerDB, social, auditStore, oauthStore)
 	facebookClientID := os.Getenv("AUTH_FACEBOOK_CLIENT_ID")
 	facebookClientSecret := os.Getenv("AUTH_FACEBOOK_CLIENT_SECRET")
 	facebookRedirectURL := getenv("AUTH_FACEBOOK_REDIRECT_URL", "http://localhost:8090/api/auth/facebook/callback")
