@@ -184,7 +184,27 @@ main.container {
 /* admin layout */
 .table-wrap { overflow-x: auto; margin-top: 20px; }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
-th, td { text-align: left; padding: 12px 8px; border-bottom: 1px solid var(--border); vertical-align: middle; }
-th { color: var(--text-muted); font-size: 12px; font-weight: 600; }
-td select { padding: 6px 8px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+th, td { text-align: left; padding: 14px 8px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+th { color: var(--text-muted); font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+tbody tr:last-child td { border-bottom: none; }
+tbody tr:hover { background: #fafaf9; }
+td:first-child { color: var(--text); font-weight: 500; }
+td select { min-width: 74px; padding: 7px 28px 7px 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--text); font-size: 12px; }
+.status { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #3d8b63; }
+.status.disabled { color: var(--text-muted); }
+.status.disabled::before { background: #aaa8a2; }
+.actions { display: flex; align-items: center; gap: 12px; white-space: nowrap; }
+.actions button { font-size: 12px; }
+.action-link { width: auto; background: none; color: var(--accent); padding: 0; margin: 0; font-size: 13px; text-decoration: underline; }
+.action-link:hover { background: none; color: var(--accent-hover); }
+.delete-link { width: auto; background: none; color: var(--danger); padding: 0; margin: 0; font-size: 13px; text-decoration: underline; }
+.delete-link:hover { background: none; color: #7f2721; }
 .small-button { width: auto; padding: 6px 10px; margin: 0; font-size: 12px; }
+
+@media (max-width: 700px) {
+  main.container { padding: 20px 12px; }
+  .panel { padding: 16px 12px; }
+  th, td { padding: 12px 6px; }
+  th:nth-child(4), td:nth-child(4) { display: none; }
+}

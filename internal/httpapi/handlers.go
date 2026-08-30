@@ -40,6 +40,7 @@ func (api *API) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/admin/users", api.Auth.RequireRole(store.RoleAdmin, api.handleListUsers))
 	mux.HandleFunc("POST /api/admin/users/role", api.Auth.RequireRole(store.RoleAdmin, api.handleChangeUserRole))
 	mux.HandleFunc("POST /api/admin/users/status", api.Auth.RequireRole(store.RoleAdmin, api.handleChangeUserStatus))
+	mux.HandleFunc("POST /api/admin/users/delete", api.Auth.RequireRole(store.RoleAdmin, api.handleDeleteUser))
 }
 
 func clientIPKey(r *http.Request) string {
@@ -256,6 +257,10 @@ type userStatusRequest struct {
 	Disabled bool   `json:"disabled"`
 }
 
+type deleteUserRequest struct {
+	UserID string `json:"user_id"`
+}
+
 func (api *API) handleRevokeSession(w http.ResponseWriter, r *http.Request) {
 	u := auth.UserFromContext(r.Context())
 	var req revokeRequest
@@ -419,6 +424,28 @@ func (api *API) handleChangeUserStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, publicUser(u))
+}
+
+func (api *API) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
+	admin := auth.UserFromContext(r.Context())
+	var req deleteUserRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid delete request")
+		return
+	}
+	if req.UserID == admin.ID {
+		writeError(w, http.StatusBadRequest, "you cannot delete your own account")
+		return
+	}
+	if err := api.Store.DeleteUser(req.UserID); err != nil {
+		if err == store.ErrNotFound {
+			writeError(w, http.StatusNotFound, "user not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "could not delete user")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 // --- shared view/id helpers ---

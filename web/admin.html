@@ -47,15 +47,28 @@
         select.disabled = user.id === window.currentAdminID;
         select.addEventListener('change', () => updateRole(user, select.value));
         role.appendChild(select);
-        const status = document.createElement('td'); status.textContent = user.disabled ? 'Disabled' : 'Active';
+        const status = document.createElement('td');
+        const statusBadge = document.createElement('span');
+        statusBadge.className = user.disabled ? 'status disabled' : 'status';
+        statusBadge.textContent = user.disabled ? 'Disabled' : 'Active';
+        status.appendChild(statusBadge);
         const created = document.createElement('td'); created.textContent = new Date(user.created_at).toLocaleString();
         const actions = document.createElement('td');
+        const actionGroup = document.createElement('div');
+        actionGroup.className = 'actions';
         const button = document.createElement('button');
-        button.className = user.disabled ? 'secondary small-button' : 'danger-link';
+        button.className = user.disabled ? 'action-link' : 'action-link';
         button.textContent = user.disabled ? 'Enable' : 'Disable';
         button.disabled = user.id === window.currentAdminID;
         button.addEventListener('click', () => updateStatus(user, !user.disabled));
-        actions.appendChild(button);
+        actionGroup.appendChild(button);
+        const deleteButton = document.createElement('button');
+        deleteButton.className = 'delete-link';
+        deleteButton.textContent = 'Delete';
+        deleteButton.disabled = user.id === window.currentAdminID;
+        deleteButton.addEventListener('click', () => deleteUser(user));
+        actionGroup.appendChild(deleteButton);
+        actions.appendChild(actionGroup);
         row.append(email, role, status, created, actions);
         body.appendChild(row);
       }
@@ -68,6 +81,10 @@
       const action = disabled ? 'disable' : 'enable';
       if (!confirm(`${action[0].toUpperCase() + action.slice(1)} ${user.email}?`)) return;
       try { await Auth.changeUserStatus(user.id, disabled); await load(); } catch (err) { showError(errorBox, err); }
+    }
+    async function deleteUser(user) {
+      if (!confirm(`Permanently delete ${user.email}? This removes their sessions and cannot be undone.`)) return;
+      try { await Auth.deleteUser(user.id); await load(); } catch (err) { showError(errorBox, err); }
     }
     async function load() {
       try { users = await Auth.listUsers(); errorBox.hidden = true; render(); }

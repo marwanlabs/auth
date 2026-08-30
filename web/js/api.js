@@ -41,6 +41,8 @@ const Auth = {
     api('/api/admin/users/role', { method: 'POST', body: JSON.stringify({ user_id, role }) }),
   changeUserStatus: (user_id, disabled) =>
     api('/api/admin/users/status', { method: 'POST', body: JSON.stringify({ user_id, disabled }) }),
+  deleteUser: (user_id) =>
+    api('/api/admin/users/delete', { method: 'POST', body: JSON.stringify({ user_id }) }),
 };
 
 // Redirects an unauthenticated visitor to the login page. Call at the top

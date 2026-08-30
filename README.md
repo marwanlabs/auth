@@ -58,7 +58,7 @@ go run ./cmd/server
 - Multi-device session tracking + per-device revocation ("sign out this device")
 - CSRF protection (double-submit cookie) on all state-changing requests
 - Role field (`user` / `admin`) with a `RequireRole` middleware
-- Admin user-management dashboard: search users, change roles, and disable/enable accounts
+- Admin user-management dashboard: search users, change roles, disable/enable accounts, and delete accounts
 - Password change (requires current password)
 - Password reset via emailed one-time link (single-use, 1-hour expiry)
 - Rate limiting on auth endpoints (10 req/min/IP by default)
@@ -101,6 +101,7 @@ go run ./cmd/server
 | GET    | `/api/admin/users`             | Yes (admin)    | List all users                     |
 | POST   | `/api/admin/users/role`        | Yes (admin)    | Change another user's role         |
 | POST   | `/api/admin/users/status`      | Yes (admin)    | Disable or enable another user     |
+| POST   | `/api/admin/users/delete`      | Yes (admin)    | Permanently delete another user   |
 
 All state-changing (`POST`) requests require an `X-CSRF-Token` header
 matching the `csrf_token` cookie — the included frontend JS

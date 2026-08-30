@@ -175,6 +175,28 @@ func (s *Store) UpdateUser(u *User) error {
 	return s.saveLocked()
 }
 
+// DeleteUser permanently removes a user and all credentials associated with
+// the account.
+func (s *Store) DeleteUser(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.d.Users[id]; !ok {
+		return ErrNotFound
+	}
+	delete(s.d.Users, id)
+	for sessionID, sess := range s.d.Sessions {
+		if sess.UserID == id {
+			delete(s.d.Sessions, sessionID)
+		}
+	}
+	for tokenHash, token := range s.d.ResetTokens {
+		if token.UserID == id {
+			delete(s.d.ResetTokens, tokenHash)
+		}
+	}
+	return s.saveLocked()
+}
+
 // CountUsers is used to decide whether the very first signup should
 // become an admin.
 func (s *Store) CountUsers() int {
