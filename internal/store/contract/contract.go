@@ -139,7 +139,7 @@ func RunAuditDurability(t *testing.T, open func() AuditRepository) {
 		t.Fatal(err)
 	}
 	got := open().ListAuditEvents()
-	if len(got) != 1 || *got[0] != *event {
+	if len(got) != 1 || got[0].ID != event.ID || got[0].Type != event.Type || got[0].Outcome != event.Outcome || !got[0].Timestamp.Equal(event.Timestamp) || got[0].ActorID != event.ActorID || got[0].ActorEmail != event.ActorEmail || got[0].Target != event.Target || got[0].ClientIP != event.ClientIP || got[0].UserAgent != event.UserAgent {
 		t.Fatalf("reopened audit events = %#v, want %#v", got, event)
 	}
 }

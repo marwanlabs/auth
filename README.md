@@ -167,6 +167,14 @@ is reported **without the connection string or its password**.
 3. Confirm the command reports `"Committed": true`.
 4. Start `cmd/server` with the same `AUTH_DATABASE_URL`.
 
+For a reproducible local PostgreSQL test database, run:
+
+```
+docker compose -f docker-compose.test.yml up -d --wait postgres
+TEST_DATABASE_URL='postgres://postgres:postgres@127.0.0.1:55432/postgres?sslmode=disable' go test ./...
+docker compose -f docker-compose.test.yml down -v
+```
+
 The import is transactional and includes core authentication data, sessions,
 reset tokens, social identities, provider settings, audit events, and OAuth
 transactions. Rejected records roll back the complete import, and the ledger
