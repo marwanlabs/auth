@@ -92,7 +92,7 @@ func randomState() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(b), nil
 }
 func socialError(w http.ResponseWriter, message string) {
-	http.Redirect(w, &http.Request{}, "/login.html?oauth_error="+url.QueryEscape(message), http.StatusFound)
+	http.Redirect(w, &http.Request{URL: &url.URL{}}, "/login.html?oauth_error="+url.QueryEscape(message), http.StatusFound)
 }
 func clearSocialState(w http.ResponseWriter, secure bool) {
 	http.SetCookie(w, &http.Cookie{Name: socialStateCookie, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode})
