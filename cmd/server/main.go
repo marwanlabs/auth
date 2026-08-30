@@ -65,6 +65,9 @@ func main() {
 	linkedinClientID := os.Getenv("AUTH_LINKEDIN_CLIENT_ID")
 	linkedinClientSecret := os.Getenv("AUTH_LINKEDIN_CLIENT_SECRET")
 	linkedinRedirectURL := getenv("AUTH_LINKEDIN_REDIRECT_URL", "http://localhost:8090/api/auth/linkedin/callback")
+	twitterClientID := os.Getenv("AUTH_TWITTER_CLIENT_ID")
+	twitterClientSecret := os.Getenv("AUTH_TWITTER_CLIENT_SECRET")
+	twitterRedirectURL := getenv("AUTH_TWITTER_REDIRECT_URL", "http://localhost:8090/api/auth/twitter/callback")
 	api.Providers["google"] = providers.NewGoogle(googleClientID, googleClientSecret, googleRedirectURL)
 	api.Providers["facebook"] = providers.NewFacebook(facebookClientID, facebookClientSecret, facebookRedirectURL)
 	api.Providers["github"] = providers.NewGitHub(githubClientID, githubClientSecret, githubRedirectURL)
@@ -73,6 +76,7 @@ func main() {
 	api.Providers["gitlab"] = providers.NewGitLab(gitlabClientID, gitlabClientSecret, gitlabRedirectURL)
 	api.Providers["discord"] = providers.NewDiscord(discordClientID, discordClientSecret, discordRedirectURL)
 	api.Providers["linkedin"] = providers.NewLinkedIn(linkedinClientID, linkedinClientSecret, linkedinRedirectURL)
+	api.Providers["twitter"] = providers.NewTwitter(twitterClientID, twitterClientSecret, twitterRedirectURL)
 
 	mux := http.NewServeMux()
 	api.Register(mux)

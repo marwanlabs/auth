@@ -25,6 +25,13 @@ type Provider interface {
 	Resolve(ctx context.Context, code string) (Identity, error)
 }
 
+// StatefulProvider is implemented by providers whose token exchange also
+// needs the authorization request state, such as OAuth providers using PKCE.
+type StatefulProvider interface {
+	Provider
+	ResolveWithState(ctx context.Context, code, state string) (Identity, error)
+}
+
 type oauthAdapter struct {
 	config         oauth2.Config
 	id             string

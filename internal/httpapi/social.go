@@ -53,9 +53,16 @@ func (api *API) handleSocialCallback(w http.ResponseWriter, r *http.Request, pro
 		socialError(w, "social sign-in was cancelled")
 		return
 	}
-	identity, err := provider.Resolve(r.Context(), r.FormValue("code"))
-	if err != nil || identity.Subject == "" || !identity.EmailVerified || !looksLikeEmail(normalizeEmail(identity.Email)) {
-		log.Printf("%s profile lookup: %v", provider.ID(), err)
+	state := r.FormValue("state")
+	var identity providers.Identity
+	var resolveErr error
+	if stateful, ok := provider.(providers.StatefulProvider); ok {
+		identity, resolveErr = stateful.ResolveWithState(r.Context(), r.FormValue("code"), state)
+	} else {
+		identity, resolveErr = provider.Resolve(r.Context(), r.FormValue("code"))
+	}
+	if resolveErr != nil || identity.Subject == "" || !identity.EmailVerified || !looksLikeEmail(normalizeEmail(identity.Email)) {
+		log.Printf("%s profile lookup: %v", provider.ID(), resolveErr)
 		socialError(w, "the provider did not provide a verified email address")
 		return
 	}

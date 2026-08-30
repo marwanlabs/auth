@@ -256,6 +256,20 @@ AUTH_LINKEDIN_REDIRECT_URL=http://localhost:8090/api/auth/linkedin/callback
 The integration requests `openid`, `profile`, and `email`. Enable LinkedIn
 from the admin dashboard after configuring the credentials.
 
+### Twitter/X sign-in
+
+Create an OAuth 2.0 application in the X Developer Portal with `users.read`
+and `users.email` access:
+
+```
+AUTH_TWITTER_CLIENT_ID=...
+AUTH_TWITTER_CLIENT_SECRET=...
+AUTH_TWITTER_REDIRECT_URL=http://localhost:8090/api/auth/twitter/callback
+```
+
+The integration requires X to return a confirmed email address. Enable
+Twitter/X from the admin dashboard after configuring the credentials.
+
 ## API reference
 
 | Method | Path                          | Auth required | Description                       |
@@ -278,6 +292,8 @@ from the admin dashboard after configuring the credentials.
 | GET    | `/api/auth/discord/callback`    | No             | Complete Discord sign-in            |
 | GET    | `/api/auth/linkedin`             | No             | Start LinkedIn sign-in              |
 | GET    | `/api/auth/linkedin/callback`    | No             | Complete LinkedIn sign-in           |
+| GET    | `/api/auth/twitter`              | No             | Start Twitter/X sign-in              |
+| GET    | `/api/auth/twitter/callback`     | No             | Complete Twitter/X sign-in           |
 | GET    | `/api/auth/providers`          | No             | List enabled social providers      |
 | POST   | `/api/logout`                 | Yes            | Clear the current session cookie   |
 | GET    | `/api/me`                     | Yes            | Current user info                  |
