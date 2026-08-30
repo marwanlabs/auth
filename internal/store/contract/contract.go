@@ -212,6 +212,9 @@ func testAdministratorCounts(t *testing.T, r CoreRepository) {
 }
 
 func testSessions(t *testing.T, r CoreRepository) {
+	if err := r.CreateUser(user("user", "user@example.com", store.RoleUser)); err != nil {
+		t.Fatal(err)
+	}
 	session := &store.Session{ID: "session", UserID: "user", TokenHash: "hash", CreatedAt: time.Now(), ExpiresAt: time.Now().Add(time.Hour)}
 	if err := r.CreateSession(session); err != nil {
 		t.Fatal(err)
@@ -232,6 +235,9 @@ func testSessions(t *testing.T, r CoreRepository) {
 }
 
 func testResetTokens(t *testing.T, r CoreRepository) {
+	if err := r.CreateUser(user("user", "user@example.com", store.RoleUser)); err != nil {
+		t.Fatal(err)
+	}
 	token := &store.ResetToken{TokenHash: "reset", UserID: "user", ExpiresAt: time.Now().Add(time.Hour)}
 	if err := r.CreateResetToken(token); err != nil {
 		t.Fatal(err)
@@ -248,6 +254,11 @@ func testResetTokens(t *testing.T, r CoreRepository) {
 }
 
 func testIdentities(t *testing.T, r CoreRepository) {
+	for _, u := range []*store.User{user("user", "user@example.com", store.RoleUser), user("other-user", "other@example.com", store.RoleUser)} {
+		if err := r.CreateUser(u); err != nil {
+			t.Fatal(err)
+		}
+	}
 	identity := &store.SocialIdentity{ID: "identity", Provider: "github", Subject: "subject", UserID: "user", CreatedAt: time.Now()}
 	if err := r.CreateIdentity(identity); err != nil {
 		t.Fatal(err)
@@ -313,6 +324,9 @@ func testDeletionCascades(t *testing.T, r CoreRepository) {
 }
 
 func testExpirationCleanup(t *testing.T, r CoreRepository) {
+	if err := r.CreateUser(user("user", "user@example.com", store.RoleUser)); err != nil {
+		t.Fatal(err)
+	}
 	if err := r.CreateSession(&store.Session{ID: "expired-session", UserID: "user", ExpiresAt: time.Now().Add(-time.Minute)}); err != nil {
 		t.Fatal(err)
 	}
