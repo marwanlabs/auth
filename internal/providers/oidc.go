@@ -28,6 +28,22 @@ func (p *oidcProvider) Name() string { return "OpenID Connect" }
 func (p *oidcProvider) Configured() bool {
 	return p.issuer != "" && p.clientID != "" && p.clientSecret != "" && p.redirectURL != ""
 }
+func (p *oidcProvider) Readiness() Readiness {
+	missing := make([]string, 0, 4)
+	if p.issuer == "" {
+		missing = append(missing, "issuer")
+	}
+	if p.clientID == "" {
+		missing = append(missing, "client_id")
+	}
+	if p.clientSecret == "" {
+		missing = append(missing, "client_secret")
+	}
+	if p.redirectURL == "" {
+		missing = append(missing, "redirect_url")
+	}
+	return Readiness{Ready: len(missing) == 0, Missing: missing}
+}
 func (p *oidcProvider) AuthorizationURL(state string) string {
 	if err := p.discover(context.Background()); err != nil {
 		return ""

@@ -1,15 +1,19 @@
 package httpapi
 
 import (
+	"authserver/internal/providers"
 	"authserver/internal/store"
 	"net/http"
+	"strings"
 )
 
 type providerView struct {
-	ID         string `json:"id"`
-	Name       string `json:"name"`
-	Configured bool   `json:"configured"`
-	Enabled    bool   `json:"enabled"`
+	ID                  string   `json:"id"`
+	Name                string   `json:"name"`
+	Configured          bool     `json:"configured"`
+	Ready               bool     `json:"ready"`
+	MissingRequirements []string `json:"missing_requirements"`
+	Enabled             bool     `json:"enabled"`
 }
 
 var supportedProviders = []struct{ ID, Name string }{
@@ -29,13 +33,14 @@ func (api *API) handleListProviders(w http.ResponseWriter, r *http.Request) {
 	settings := api.ProviderDB.ListProviderSettings()
 	out := make([]providerView, 0, len(supportedProviders))
 	for _, item := range supportedProviders {
-		configured := api.providerConfigured(item.ID)
+		readiness := api.providerReadiness(item.ID)
+		configured := readiness.Ready
 		enabled, explicit := settings[item.ID]
 		if !explicit {
 			enabled = configured && (item.ID == "google" || item.ID == "facebook")
 		}
 		if admin || enabled {
-			out = append(out, providerView{ID: item.ID, Name: item.Name, Configured: configured, Enabled: enabled && configured})
+			out = append(out, providerView{ID: item.ID, Name: item.Name, Configured: configured, Ready: readiness.Ready, MissingRequirements: readiness.Missing, Enabled: enabled && configured})
 		}
 	}
 	writeJSON(w, http.StatusOK, out)
@@ -52,9 +57,12 @@ func (api *API) handleSetProvider(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid provider")
 		return
 	}
-	if req.Enabled && !api.providerConfigured(req.Provider) {
-		writeError(w, http.StatusBadRequest, "provider credentials are not configured")
-		return
+	if req.Enabled {
+		readiness := api.providerReadiness(req.Provider)
+		if !readiness.Ready {
+			writeError(w, http.StatusBadRequest, "provider is not ready; missing requirements: "+strings.Join(readiness.Missing, ", "))
+			return
+		}
 	}
 	if err := api.ProviderDB.SetProviderEnabled(req.Provider, req.Enabled); err != nil {
 		writeError(w, http.StatusInternalServerError, "could not update provider")
@@ -73,8 +81,21 @@ func isSupportedProvider(id string) bool {
 }
 
 func (api *API) providerConfigured(id string) bool {
+	return api.providerReadiness(id).Ready
+}
+
+func (api *API) providerReadiness(id string) providers.Readiness {
 	provider, ok := api.Providers[id]
-	return ok && provider.Configured()
+	if !ok {
+		return providers.Readiness{Missing: []string{"provider configuration"}}
+	}
+	if diagnostic, ok := provider.(providers.ReadinessProvider); ok {
+		return diagnostic.Readiness()
+	}
+	if provider.Configured() {
+		return providers.Readiness{Ready: true, Missing: []string{}}
+	}
+	return providers.Readiness{Missing: []string{"provider configuration"}}
 }
 
 func (api *API) providerEnabled(id string) bool {

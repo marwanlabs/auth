@@ -33,6 +33,7 @@ func (p *appleProvider) Name() string { return "Apple" }
 func (p *appleProvider) Configured() bool {
 	return p.config.ClientID != "" && p.config.ClientSecret != "" && p.config.RedirectURL != ""
 }
+func (p *appleProvider) Readiness() Readiness { return oauthReadiness(p.config) }
 func (p *appleProvider) AuthorizationURL(state string) string {
 	return p.config.AuthCodeURL(state, oauth2.SetAuthURLParam("response_mode", "form_post"))
 }
