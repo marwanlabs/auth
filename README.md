@@ -216,6 +216,19 @@ validates the ID token signature using Apple's public keys, and uses Apple's
 stable subject identifier for account linking. Enable Apple from the admin
 dashboard after configuring the credentials.
 
+### GitLab sign-in
+
+Create an OAuth application in GitLab with the `read_user` and `email` scopes:
+
+```
+AUTH_GITLAB_CLIENT_ID=...
+AUTH_GITLAB_CLIENT_SECRET=...
+AUTH_GITLAB_REDIRECT_URL=http://localhost:8090/api/auth/gitlab/callback
+```
+
+This integration targets GitLab.com. Enable GitLab from the admin dashboard
+after configuring the credentials.
+
 ## API reference
 
 | Method | Path                          | Auth required | Description                       |
@@ -232,6 +245,8 @@ dashboard after configuring the credentials.
 | GET    | `/api/auth/microsoft/callback`  | No             | Complete Microsoft sign-in          |
 | GET    | `/api/auth/apple`               | No             | Start Apple sign-in                 |
 | GET/POST | `/api/auth/apple/callback`    | No             | Complete Apple sign-in              |
+| GET    | `/api/auth/gitlab`              | No             | Start GitLab sign-in                |
+| GET    | `/api/auth/gitlab/callback`     | No             | Complete GitLab sign-in             |
 | GET    | `/api/auth/providers`          | No             | List enabled social providers      |
 | POST   | `/api/logout`                 | Yes            | Clear the current session cookie   |
 | GET    | `/api/me`                     | Yes            | Current user info                  |
