@@ -10,8 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-// Store implements the core authentication repository over PostgreSQL.
-// OAuth transactions and audit events deliberately remain separate capabilities.
+// Store implements the authentication repository over PostgreSQL.
 type Store struct{ db *sql.DB }
 
 func NewStore(db *sql.DB) *Store { return &Store{db: db} }
@@ -139,7 +138,26 @@ func (s *Store) DeleteExpiredSessions() error {
 		return err
 	}
 	_, err = s.db.Exec(`DELETE FROM reset_tokens WHERE expires_at < now()`)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(`DELETE FROM oauth_transactions WHERE expires_at < now()`)
 	return err
+}
+
+func (s *Store) CreateOAuthTransaction(v *store.OAuthTransaction) error {
+	_, err := s.db.Exec(`INSERT INTO oauth_transactions (id,provider,pkce_verifier,created_at,expires_at) VALUES ($1,$2,$3,$4,$5)`, v.ID, v.Provider, v.PKCEVerifier, v.CreatedAt, v.ExpiresAt)
+	return translateError(err)
+}
+
+// ConsumeOAuthTransaction atomically validates and removes one OAuth flow.
+func (s *Store) ConsumeOAuthTransaction(id, provider string) (*store.OAuthTransaction, error) {
+	v := new(store.OAuthTransaction)
+	err := s.db.QueryRow(`DELETE FROM oauth_transactions WHERE id=$1 AND provider=$2 AND expires_at >= now() RETURNING id,provider,pkce_verifier,created_at,expires_at`, id, provider).Scan(&v.ID, &v.Provider, &v.PKCEVerifier, &v.CreatedAt, &v.ExpiresAt)
+	if err != nil {
+		return nil, translateError(err)
+	}
+	return v, nil
 }
 
 func (s *Store) CreateResetToken(v *store.ResetToken) error {
@@ -248,3 +266,4 @@ func translateError(err error) error {
 
 var _ interface{ CreateUser(*store.User) error } = (*Store)(nil)
 var _ store.AuditRepository = (*Store)(nil)
+var _ store.OAuthTransactionRepository = (*Store)(nil)

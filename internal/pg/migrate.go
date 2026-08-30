@@ -74,8 +74,8 @@ func migrations() ([]migration, error) {
 	}
 	sort.Slice(list, func(i, j int) bool { return list[i].version < list[j].version })
 	for i, m := range list {
-		if m.version != int64(i+1) {
-			return nil, fmt.Errorf("migration versions must be contiguous starting at 1; version %d is out of place", m.version)
+		if (i == 0 && m.version != 1) || (i > 0 && m.version <= list[i-1].version) {
+			return nil, fmt.Errorf("migration versions must be strictly increasing; version %d is out of order", m.version)
 		}
 	}
 	if len(list) == 0 {

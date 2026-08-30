@@ -115,10 +115,10 @@ func TestPostgresRepeatableInitialization(t *testing.T) {
 	}
 }
 
-func TestPostgresCoreStoreContract(t *testing.T) {
+func TestPostgresStoreContract(t *testing.T) {
 	baseURL := os.Getenv("TEST_DATABASE_URL")
 	if baseURL == "" {
-		t.Skip("TEST_DATABASE_URL not set; skipping PostgreSQL core store contract")
+		t.Skip("TEST_DATABASE_URL not set; skipping PostgreSQL store contract")
 	}
 	ctx := context.Background()
 	adminCfg, err := ParseConfig(baseURL)
@@ -153,7 +153,10 @@ func TestPostgresCoreStoreContract(t *testing.T) {
 	if _, err := Migrate(ctx, db); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	contract.RunCore(t, func(t *testing.T) contract.CoreRepository {
+	contract.Run(t, func(t *testing.T) contract.Repository {
+		if _, err := db.ExecContext(ctx, `DELETE FROM oauth_transactions`); err != nil {
+			t.Fatalf("reset oauth transactions: %v", err)
+		}
 		if _, err := db.ExecContext(ctx, `DELETE FROM users`); err != nil {
 			t.Fatalf("reset users: %v", err)
 		}
@@ -168,7 +171,10 @@ func TestPostgresCoreStoreContract(t *testing.T) {
 	if _, err := db.ExecContext(ctx, `DELETE FROM provider_settings`); err != nil {
 		t.Fatalf("reset provider settings for durability: %v", err)
 	}
-	contract.RunCoreDurability(t, func() contract.CoreRepository { return NewStore(db) })
+	if _, err := db.ExecContext(ctx, `DELETE FROM oauth_transactions`); err != nil {
+		t.Fatalf("reset oauth transactions for durability: %v", err)
+	}
+	contract.RunDurability(t, func() contract.Repository { return NewStore(db) })
 }
 
 func TestPostgresAuditStoreContract(t *testing.T) {
