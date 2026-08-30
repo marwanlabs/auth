@@ -15,16 +15,39 @@ covered here. Add them only if you actually need them.
 go run ./cmd/server
 ```
 
-Then open http://localhost:8080 — it redirects to sign-up/sign-in.
+Then open http://localhost:8090 — it redirects to sign-up/sign-in.
 
 The first account created automatically becomes an admin (role: "admin").
 Everyone after that is a regular user.
+
+## Development environment
+
+This repository includes a Nix flake with the supported default Go toolchain,
+`gopls`, and Go tools.
+Enter it manually with:
+
+```
+nix develop
+```
+
+If you use direnv, allow the repository once:
+
+```
+direnv allow
+```
+
+After that, direnv automatically enters the Nix development environment when
+you enter this directory. You can then run the server normally:
+
+```
+go run ./cmd/server
+```
 
 ### Environment variables
 
 | Variable               | Default            | Purpose                                                   |
 |-------------------------|--------------------|-----------------------------------------------------------|
-| `AUTH_ADDR`             | `:8080`            | Listen address                                            |
+| `AUTH_ADDR`             | `:8090`            | Listen address                                            |
 | `AUTH_DATA_FILE`        | `data/store.json`  | Where user/session data is persisted                      |
 | `AUTH_SECURE_COOKIES`   | `false`            | Set to `true` once served over HTTPS (marks cookies Secure) |
 

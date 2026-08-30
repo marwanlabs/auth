@@ -15,7 +15,7 @@ import (
 
 func main() {
 	dataPath := getenv("AUTH_DATA_FILE", "data/store.json")
-	addr := getenv("AUTH_ADDR", ":8080")
+	addr := getenv("AUTH_ADDR", ":8090")
 	secureCookies := getenv("AUTH_SECURE_COOKIES", "false") == "true"
 
 	if err := os.MkdirAll("data", 0700); err != nil {
