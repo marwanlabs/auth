@@ -229,6 +229,19 @@ AUTH_GITLAB_REDIRECT_URL=http://localhost:8090/api/auth/gitlab/callback
 This integration targets GitLab.com. Enable GitLab from the admin dashboard
 after configuring the credentials.
 
+### Discord sign-in
+
+Create an application in the Discord Developer Portal and add an OAuth2
+redirect URL. The integration requests only `identify` and `email`:
+
+```
+AUTH_DISCORD_CLIENT_ID=...
+AUTH_DISCORD_CLIENT_SECRET=...
+AUTH_DISCORD_REDIRECT_URL=http://localhost:8090/api/auth/discord/callback
+```
+
+Enable Discord from the admin dashboard after configuring the credentials.
+
 ## API reference
 
 | Method | Path                          | Auth required | Description                       |
@@ -247,6 +260,8 @@ after configuring the credentials.
 | GET/POST | `/api/auth/apple/callback`    | No             | Complete Apple sign-in              |
 | GET    | `/api/auth/gitlab`              | No             | Start GitLab sign-in                |
 | GET    | `/api/auth/gitlab/callback`     | No             | Complete GitLab sign-in             |
+| GET    | `/api/auth/discord`             | No             | Start Discord sign-in               |
+| GET    | `/api/auth/discord/callback`    | No             | Complete Discord sign-in            |
 | GET    | `/api/auth/providers`          | No             | List enabled social providers      |
 | POST   | `/api/logout`                 | Yes            | Clear the current session cookie   |
 | GET    | `/api/me`                     | Yes            | Current user info                  |
