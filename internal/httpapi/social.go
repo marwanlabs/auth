@@ -35,7 +35,13 @@ func (api *API) handleSocialStart(w http.ResponseWriter, r *http.Request, provid
 		return
 	}
 	http.SetCookie(w, &http.Cookie{Name: socialStateCookie, Value: state, Path: "/", HttpOnly: true, Secure: api.Auth.Secure, SameSite: http.SameSiteLaxMode, MaxAge: 10 * 60})
-	http.Redirect(w, r, provider.AuthorizationURL(state), http.StatusFound)
+	authorizationURL := provider.AuthorizationURL(state)
+	if authorizationURL == "" {
+		clearSocialState(w, api.Auth.Secure)
+		writeError(w, http.StatusServiceUnavailable, "social provider is unavailable")
+		return
+	}
+	http.Redirect(w, r, authorizationURL, http.StatusFound)
 }
 
 func (api *API) handleSocialCallback(w http.ResponseWriter, r *http.Request, provider providers.Provider) {

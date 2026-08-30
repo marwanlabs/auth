@@ -270,6 +270,23 @@ AUTH_TWITTER_REDIRECT_URL=http://localhost:8090/api/auth/twitter/callback
 The integration requires X to return a confirmed email address. Enable
 Twitter/X from the admin dashboard after configuring the credentials.
 
+### OpenID Connect sign-in
+
+Configure any OpenID Connect issuer that exposes
+`/.well-known/openid-configuration` and a `userinfo_endpoint`:
+
+```
+AUTH_OIDC_ISSUER=https://id.example.com/realms/example
+AUTH_OIDC_CLIENT_ID=...
+AUTH_OIDC_CLIENT_SECRET=...
+AUTH_OIDC_REDIRECT_URL=http://localhost:8090/api/auth/oidc/callback
+```
+
+The adapter discovers the authorization, token, and userinfo endpoints and
+requests `openid`, `profile`, and `email`. The issuer must return
+`email_verified: true`. Enable OpenID Connect from the admin dashboard after
+configuring the credentials.
+
 ## API reference
 
 | Method | Path                          | Auth required | Description                       |
@@ -294,6 +311,8 @@ Twitter/X from the admin dashboard after configuring the credentials.
 | GET    | `/api/auth/linkedin/callback`    | No             | Complete LinkedIn sign-in           |
 | GET    | `/api/auth/twitter`              | No             | Start Twitter/X sign-in              |
 | GET    | `/api/auth/twitter/callback`     | No             | Complete Twitter/X sign-in           |
+| GET    | `/api/auth/oidc`                  | No             | Start OpenID Connect sign-in        |
+| GET    | `/api/auth/oidc/callback`         | No             | Complete OpenID Connect sign-in     |
 | GET    | `/api/auth/providers`          | No             | List enabled social providers      |
 | POST   | `/api/logout`                 | Yes            | Clear the current session cookie   |
 | GET    | `/api/me`                     | Yes            | Current user info                  |

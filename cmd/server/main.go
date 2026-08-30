@@ -68,6 +68,10 @@ func main() {
 	twitterClientID := os.Getenv("AUTH_TWITTER_CLIENT_ID")
 	twitterClientSecret := os.Getenv("AUTH_TWITTER_CLIENT_SECRET")
 	twitterRedirectURL := getenv("AUTH_TWITTER_REDIRECT_URL", "http://localhost:8090/api/auth/twitter/callback")
+	oidcIssuer := os.Getenv("AUTH_OIDC_ISSUER")
+	oidcClientID := os.Getenv("AUTH_OIDC_CLIENT_ID")
+	oidcClientSecret := os.Getenv("AUTH_OIDC_CLIENT_SECRET")
+	oidcRedirectURL := getenv("AUTH_OIDC_REDIRECT_URL", "http://localhost:8090/api/auth/oidc/callback")
 	api.Providers["google"] = providers.NewGoogle(googleClientID, googleClientSecret, googleRedirectURL)
 	api.Providers["facebook"] = providers.NewFacebook(facebookClientID, facebookClientSecret, facebookRedirectURL)
 	api.Providers["github"] = providers.NewGitHub(githubClientID, githubClientSecret, githubRedirectURL)
@@ -77,6 +81,7 @@ func main() {
 	api.Providers["discord"] = providers.NewDiscord(discordClientID, discordClientSecret, discordRedirectURL)
 	api.Providers["linkedin"] = providers.NewLinkedIn(linkedinClientID, linkedinClientSecret, linkedinRedirectURL)
 	api.Providers["twitter"] = providers.NewTwitter(twitterClientID, twitterClientSecret, twitterRedirectURL)
+	api.Providers["oidc"] = providers.NewOIDC(oidcIssuer, oidcClientID, oidcClientSecret, oidcRedirectURL)
 
 	mux := http.NewServeMux()
 	api.Register(mux)
