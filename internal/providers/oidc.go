@@ -45,21 +45,30 @@ func (p *oidcProvider) Readiness() Readiness {
 	return Readiness{Ready: len(missing) == 0, Missing: missing}
 }
 func (p *oidcProvider) AuthorizationURL(state string) string {
+	return p.AuthorizationURLWithVerifier(state, state)
+}
+func (p *oidcProvider) AuthorizationURLWithVerifier(state, verifier string) string {
 	if err := p.discover(context.Background()); err != nil {
 		return ""
 	}
 	p.mu.RLock()
 	defer p.mu.RUnlock()
-	return p.config.AuthCodeURL(state, oauth2.AccessTypeOnline)
+	return p.config.AuthCodeURL(state, oauth2.AccessTypeOnline,
+		oauth2.SetAuthURLParam("code_challenge", pkceChallenge(verifier)),
+		oauth2.SetAuthURLParam("code_challenge_method", "S256"),
+	)
 }
 func (p *oidcProvider) Resolve(ctx context.Context, code string) (Identity, error) {
+	return p.ResolveWithVerifier(ctx, code, code)
+}
+func (p *oidcProvider) ResolveWithVerifier(ctx context.Context, code, verifier string) (Identity, error) {
 	if err := p.discover(ctx); err != nil {
 		return Identity{}, err
 	}
 	p.mu.RLock()
 	config, userinfoURL := p.config, p.userinfoURL
 	p.mu.RUnlock()
-	token, err := config.Exchange(ctx, code)
+	token, err := config.Exchange(ctx, code, oauth2.SetAuthURLParam("code_verifier", verifier))
 	if err != nil {
 		return Identity{}, err
 	}

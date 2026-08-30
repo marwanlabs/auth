@@ -2,6 +2,8 @@ package providers
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -81,14 +83,28 @@ func (p *oauthAdapter) Configured() bool {
 }
 func (p *oauthAdapter) Readiness() Readiness { return oauthReadiness(p.config) }
 func (p *oauthAdapter) AuthorizationURL(state string) string {
-	return p.config.AuthCodeURL(state, oauth2.AccessTypeOnline)
+	return p.AuthorizationURLWithVerifier(state, state)
 }
 func (p *oauthAdapter) Resolve(ctx context.Context, code string) (Identity, error) {
-	token, err := p.config.Exchange(ctx, code)
+	return p.ResolveWithVerifier(ctx, code, code)
+}
+func (p *oauthAdapter) AuthorizationURLWithVerifier(state, verifier string) string {
+	return p.config.AuthCodeURL(state, oauth2.AccessTypeOnline,
+		oauth2.SetAuthURLParam("code_challenge", pkceChallenge(verifier)),
+		oauth2.SetAuthURLParam("code_challenge_method", "S256"),
+	)
+}
+func (p *oauthAdapter) ResolveWithVerifier(ctx context.Context, code, verifier string) (Identity, error) {
+	token, err := p.config.Exchange(ctx, code, oauth2.SetAuthURLParam("code_verifier", verifier))
 	if err != nil {
 		return Identity{}, err
 	}
 	return p.resolveProfile(ctx, p.config.Client(ctx, token))
+}
+
+func pkceChallenge(verifier string) string {
+	digest := sha256.Sum256([]byte(verifier))
+	return base64.RawURLEncoding.EncodeToString(digest[:])
 }
 
 func fetchProfile(ctx context.Context, client *http.Client, endpoint string, out any) error {

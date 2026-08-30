@@ -108,7 +108,7 @@ func (api *API) handleSocialCallback(w http.ResponseWriter, r *http.Request, pro
 		identity, resolveErr = provider.Resolve(r.Context(), r.FormValue("code"))
 	}
 	if resolveErr != nil || identity.Subject == "" || !identity.EmailVerified || !looksLikeEmail(normalizeEmail(identity.Email)) {
-		log.Printf("%s profile lookup: %v", provider.ID(), resolveErr)
+		log.Printf("%s profile lookup failed", provider.ID())
 		socialError(w, "the provider did not provide a verified email address")
 		return
 	}

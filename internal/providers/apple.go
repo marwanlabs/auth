@@ -35,10 +35,20 @@ func (p *appleProvider) Configured() bool {
 }
 func (p *appleProvider) Readiness() Readiness { return oauthReadiness(p.config) }
 func (p *appleProvider) AuthorizationURL(state string) string {
-	return p.config.AuthCodeURL(state, oauth2.SetAuthURLParam("response_mode", "form_post"))
+	return p.AuthorizationURLWithVerifier(state, state)
 }
 func (p *appleProvider) Resolve(ctx context.Context, code string) (Identity, error) {
-	token, err := p.config.Exchange(ctx, code)
+	return p.ResolveWithVerifier(ctx, code, code)
+}
+func (p *appleProvider) AuthorizationURLWithVerifier(state, verifier string) string {
+	return p.config.AuthCodeURL(state,
+		oauth2.SetAuthURLParam("response_mode", "form_post"),
+		oauth2.SetAuthURLParam("code_challenge", pkceChallenge(verifier)),
+		oauth2.SetAuthURLParam("code_challenge_method", "S256"),
+	)
+}
+func (p *appleProvider) ResolveWithVerifier(ctx context.Context, code, verifier string) (Identity, error) {
+	token, err := p.config.Exchange(ctx, code, oauth2.SetAuthURLParam("code_verifier", verifier))
 	if err != nil {
 		return Identity{}, err
 	}

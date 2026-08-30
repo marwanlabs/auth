@@ -19,6 +19,7 @@ import (
 )
 
 func TestOAuthProviderConformanceAppleFormPost(t *testing.T) {
+	var receivedVerifier string
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		t.Fatal(err)
@@ -32,6 +33,10 @@ func TestOAuthProviderConformanceAppleFormPost(t *testing.T) {
 		"https://appleid.apple.com/auth/token": func(r *http.Request) (int, string) {
 			if r.Method != http.MethodPost {
 				t.Fatalf("Apple token method = %s, want POST", r.Method)
+			}
+			receivedVerifier = r.FormValue("code_verifier")
+			if receivedVerifier == "" {
+				t.Fatal("Apple token exchange did not include a PKCE verifier")
 			}
 			return http.StatusOK, `{"access_token":"token","id_token":"` + idToken + `","token_type":"Bearer"}`
 		},
@@ -49,7 +54,7 @@ func TestOAuthProviderConformanceAppleFormPost(t *testing.T) {
 		t.Fatalf("start status = %d, want %d", start.Code, http.StatusFound)
 	}
 	authorize, err := url.Parse(start.Header().Get("Location"))
-	if err != nil || authorize.Query().Get("response_mode") != "form_post" {
+	if err != nil || authorize.Query().Get("response_mode") != "form_post" || authorize.Query().Get("code_challenge_method") != "S256" || authorize.Query().Get("code_challenge") == "" {
 		t.Fatalf("Apple authorization URL = %q, missing form_post", start.Header().Get("Location"))
 	}
 	cookie := start.Result().Cookies()[0]
@@ -67,9 +72,11 @@ func TestOAuthProviderConformanceAppleFormPost(t *testing.T) {
 	if _, err := db.GetIdentity("apple", "apple-subject"); err != nil {
 		t.Fatalf("Apple identity was not persisted: %v", err)
 	}
+	assertPKCEVerifierMatchesChallenge(t, authorize.Query().Get("code_challenge"), receivedVerifier)
 }
 
 func TestOAuthProviderConformanceOIDCDiscoveryAndProfile(t *testing.T) {
+	var receivedVerifier string
 	network := newProviderNetwork(t, map[string]func(*http.Request) (int, string){
 		"https://oidc.test/.well-known/openid-configuration": func(*http.Request) (int, string) {
 			return http.StatusOK, `{"authorization_endpoint":"https://oidc.test/authorize","token_endpoint":"https://oidc.test/token","userinfo_endpoint":"https://oidc.test/userinfo"}`
@@ -77,6 +84,10 @@ func TestOAuthProviderConformanceOIDCDiscoveryAndProfile(t *testing.T) {
 		"https://oidc.test/token": func(r *http.Request) (int, string) {
 			if r.FormValue("code") != "oidc-code" {
 				t.Fatalf("OIDC token code = %q", r.FormValue("code"))
+			}
+			receivedVerifier = r.FormValue("code_verifier")
+			if receivedVerifier == "" {
+				t.Fatal("OIDC token exchange did not include a PKCE verifier")
 			}
 			return http.StatusOK, `{"access_token":"oidc-token","token_type":"Bearer"}`
 		},
@@ -93,13 +104,48 @@ func TestOAuthProviderConformanceOIDCDiscoveryAndProfile(t *testing.T) {
 		t.Fatalf("OIDC start = %d, want %d", start.Code, http.StatusFound)
 	}
 	authorize, err := url.Parse(start.Header().Get("Location"))
-	if err != nil || authorize.Host != "oidc.test" || authorize.Query().Get("client_id") != "oidc-client" {
+	if err != nil || authorize.Host != "oidc.test" || authorize.Query().Get("client_id") != "oidc-client" || authorize.Query().Get("code_challenge_method") != "S256" || authorize.Query().Get("code_challenge") == "" {
 		t.Fatalf("OIDC authorization URL = %q", start.Header().Get("Location"))
 	}
 	callbackWithCookie(t, mux, "oidc", start.Result().Cookies()[0], http.MethodGet, url.Values{"code": {"oidc-code"}})
 	if _, err := db.GetIdentity("oidc", "oidc-subject"); err != nil {
 		t.Fatalf("OIDC identity was not persisted: %v", err)
 	}
+	assertPKCEVerifierMatchesChallenge(t, authorize.Query().Get("code_challenge"), receivedVerifier)
+}
+
+func TestOAuthProviderConformanceOAuthAdapterPKCE(t *testing.T) {
+	var receivedVerifier string
+	network := newProviderNetwork(t, map[string]func(*http.Request) (int, string){
+		"https://github.com/login/oauth/authorize": func(*http.Request) (int, string) { return http.StatusOK, `{}` },
+		"https://github.com/login/oauth/access_token": func(r *http.Request) (int, string) {
+			receivedVerifier = r.FormValue("code_verifier")
+			return http.StatusOK, `{"access_token":"github-token","token_type":"Bearer"}`
+		},
+		"https://api.github.com/user": func(*http.Request) (int, string) {
+			return http.StatusOK, `{"id":123,"email":"github@example.com"}`
+		},
+	})
+	defer network.Close()
+
+	_, _, mux := testMux(t, providers.NewGitHub("github-client", "github-secret", "http://localhost/callback"))
+	start := httptest.NewRecorder()
+	mux.ServeHTTP(start, httptest.NewRequest(http.MethodGet, "/api/auth/github", nil))
+	if start.Code != http.StatusFound {
+		t.Fatalf("start status = %d, want %d", start.Code, http.StatusFound)
+	}
+	authorize, err := url.Parse(start.Header().Get("Location"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if authorize.Query().Get("code_challenge_method") != "S256" || authorize.Query().Get("code_challenge") == "" {
+		t.Fatalf("GitHub authorization URL = %q, missing S256 PKCE", authorize.String())
+	}
+	callbackWithCookie(t, mux, "github", start.Result().Cookies()[0], http.MethodGet, url.Values{"code": {"github-code"}})
+	if receivedVerifier == "" {
+		t.Fatal("GitHub token exchange did not include a PKCE verifier")
+	}
+	assertPKCEVerifierMatchesChallenge(t, authorize.Query().Get("code_challenge"), receivedVerifier)
 }
 
 func TestOAuthProviderConformanceTwitterPKCESuccess(t *testing.T) {
@@ -142,10 +188,7 @@ func TestOAuthProviderConformanceTwitterPKCESuccess(t *testing.T) {
 	if receivedVerifier == "" {
 		t.Fatal("Twitter callback did not send the stored PKCE verifier")
 	}
-	digest := sha256.Sum256([]byte(receivedVerifier))
-	if got := base64.RawURLEncoding.EncodeToString(digest[:]); got != challenge {
-		t.Fatalf("Twitter challenge = %q, verifier produces %q", challenge, got)
-	}
+	assertPKCEVerifierMatchesChallenge(t, challenge, receivedVerifier)
 	if _, err := db.GetIdentity("twitter", "twitter-subject"); err != nil {
 		t.Fatalf("Twitter identity was not persisted: %v", err)
 	}
@@ -153,6 +196,14 @@ func TestOAuthProviderConformanceTwitterPKCESuccess(t *testing.T) {
 	mux.ServeHTTP(replay, callback)
 	if !strings.Contains(replay.Header().Get("Location"), "invalid+sign-in+state") {
 		t.Fatalf("Twitter replay = %q", replay.Header().Get("Location"))
+	}
+}
+
+func assertPKCEVerifierMatchesChallenge(t *testing.T, challenge, verifier string) {
+	t.Helper()
+	digest := sha256.Sum256([]byte(verifier))
+	if got := base64.RawURLEncoding.EncodeToString(digest[:]); got != challenge {
+		t.Fatalf("PKCE challenge = %q, verifier produces %q", challenge, got)
 	}
 }
 
@@ -204,7 +255,7 @@ type roundTripProviderRequests struct {
 }
 
 func (t roundTripProviderRequests) RoundTrip(r *http.Request) (*http.Response, error) {
-	if strings.HasSuffix(r.URL.Host, "appleid.apple.com") || strings.HasSuffix(r.URL.Host, "oidc.test") || strings.HasSuffix(r.URL.Host, "twitter.com") || strings.HasSuffix(r.URL.Host, "api.x.com") {
+	if strings.HasSuffix(r.URL.Host, "appleid.apple.com") || strings.HasSuffix(r.URL.Host, "oidc.test") || strings.HasSuffix(r.URL.Host, "twitter.com") || strings.HasSuffix(r.URL.Host, "api.x.com") || strings.HasSuffix(r.URL.Host, "github.com") || strings.HasSuffix(r.URL.Host, "api.github.com") {
 		clone := r.Clone(r.Context())
 		clone.Header.Set("X-Test-Provider-URL", r.URL.String())
 		clone.URL.Scheme = "http"
