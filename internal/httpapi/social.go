@@ -52,7 +52,14 @@ func (api *API) handleSocialStart(w http.ResponseWriter, r *http.Request, provid
 		writeError(w, http.StatusInternalServerError, "could not start social sign-in")
 		return
 	}
-	http.SetCookie(w, &http.Cookie{Name: socialStateCookiePrefix + state, Value: provider.ID(), Path: "/", HttpOnly: true, Secure: api.Auth.Secure, SameSite: http.SameSiteLaxMode, MaxAge: int(socialTransactionTTL.Seconds())})
+	sameSite := http.SameSiteLaxMode
+	secure := api.Auth.Secure
+	if provider.ID() == "apple" {
+		// Apple's form_post callback is cross-site and requires the state cookie.
+		sameSite = http.SameSiteNoneMode
+		secure = true
+	}
+	http.SetCookie(w, &http.Cookie{Name: socialStateCookiePrefix + state, Value: provider.ID(), Path: "/", HttpOnly: true, Secure: secure, SameSite: sameSite, MaxAge: int(socialTransactionTTL.Seconds())})
 	authorizationURL := ""
 	if pkce, ok := provider.(providers.PKCEProvider); ok {
 		authorizationURL = pkce.AuthorizationURLWithVerifier(state, verifier)

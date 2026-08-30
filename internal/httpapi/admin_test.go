@@ -24,7 +24,7 @@ func adminTestAPI(t *testing.T) (*API, *store.Store, *http.ServeMux) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	api := New(&auth.Service{Store: s}, s, s, s, s, s, s)
+	api := New(&auth.Service{Store: s}, s, s, s, s, s, s, s)
 	mux := http.NewServeMux()
 	api.Register(mux)
 	api.RegisterProviderRoutes(mux)

@@ -515,6 +515,7 @@ func (s *Store) ConsumeOAuthTransaction(id, provider string) (*OAuthTransaction,
 	}
 	delete(s.d.OAuth, id)
 	if err := s.saveLocked(); err != nil {
+		s.d.OAuth[id] = tx
 		return nil, err
 	}
 	return tx, nil

@@ -102,7 +102,7 @@ func TestOAuthProviderConformanceOIDCDiscoveryAndProfile(t *testing.T) {
 	}
 }
 
-func TestOAuthProviderConformanceTwitterPKCEFailureConsumesTransaction(t *testing.T) {
+func TestOAuthProviderConformanceTwitterPKCESuccess(t *testing.T) {
 	var receivedVerifier string
 	network := newProviderNetwork(t, map[string]func(*http.Request) (int, string){
 		"https://twitter.com/i/oauth2/authorize": func(*http.Request) (int, string) { return http.StatusOK, `{}` },
@@ -111,12 +111,12 @@ func TestOAuthProviderConformanceTwitterPKCEFailureConsumesTransaction(t *testin
 			return http.StatusOK, `{"access_token":"twitter-token","token_type":"Bearer"}`
 		},
 		"https://api.x.com/2/users/me?user.fields=id,confirmed_email": func(*http.Request) (int, string) {
-			return http.StatusOK, `{"data":{"id":"twitter-subject"}}`
+			return http.StatusOK, `{"data":{"id":"twitter-subject","confirmed_email":"twitter@example.com"}}`
 		},
 	})
 	defer network.Close()
 
-	_, _, mux := testMux(t, providers.NewTwitter("twitter-client", "twitter-secret", "http://localhost/callback"))
+	_, db, mux := testMux(t, providers.NewTwitter("twitter-client", "twitter-secret", "http://localhost/callback"))
 	start := httptest.NewRecorder()
 	mux.ServeHTTP(start, httptest.NewRequest(http.MethodGet, "/api/auth/twitter", nil))
 	if start.Code != http.StatusFound {
@@ -136,8 +136,8 @@ func TestOAuthProviderConformanceTwitterPKCEFailureConsumesTransaction(t *testin
 	callback := httptest.NewRequest(http.MethodGet, "/api/auth/twitter/callback?state="+url.QueryEscape(state)+"&code=twitter-code", nil)
 	callback.AddCookie(cookie)
 	mux.ServeHTTP(response, callback)
-	if response.Code != http.StatusFound || !strings.Contains(response.Header().Get("Location"), "verified+email+address") {
-		t.Fatalf("Twitter failure = %d %q", response.Code, response.Header().Get("Location"))
+	if response.Code != http.StatusFound || response.Header().Get("Location") != "/dashboard.html" {
+		t.Fatalf("Twitter callback = %d %q", response.Code, response.Header().Get("Location"))
 	}
 	if receivedVerifier == "" {
 		t.Fatal("Twitter callback did not send the stored PKCE verifier")
@@ -145,6 +145,9 @@ func TestOAuthProviderConformanceTwitterPKCEFailureConsumesTransaction(t *testin
 	digest := sha256.Sum256([]byte(receivedVerifier))
 	if got := base64.RawURLEncoding.EncodeToString(digest[:]); got != challenge {
 		t.Fatalf("Twitter challenge = %q, verifier produces %q", challenge, got)
+	}
+	if _, err := db.GetIdentity("twitter", "twitter-subject"); err != nil {
+		t.Fatalf("Twitter identity was not persisted: %v", err)
 	}
 	replay := httptest.NewRecorder()
 	mux.ServeHTTP(replay, callback)

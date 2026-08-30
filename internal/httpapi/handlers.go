@@ -29,8 +29,7 @@ type API struct {
 	OAuth      store.OAuthTransactionRepository
 }
 
-func New(a *auth.Service, users UserRepository, sessions SessionRepository, reset ResetTokenRepository, providerDB ProviderRepository, social socialauth.Repository, audit store.AuditRepository) *API {
-	oauth, _ := social.(store.OAuthTransactionRepository)
+func New(a *auth.Service, users UserRepository, sessions SessionRepository, reset ResetTokenRepository, providerDB ProviderRepository, social socialauth.Repository, audit store.AuditRepository, oauth store.OAuthTransactionRepository) *API {
 	return &API{Auth: a, Users: users, Sessions: sessions, Reset: reset, ProviderDB: providerDB, Audit: audit, Providers: make(map[string]providers.Provider), Social: socialauth.New(social), OAuth: oauth}
 }
 
