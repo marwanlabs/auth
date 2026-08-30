@@ -73,16 +73,8 @@ func isSupportedProvider(id string) bool {
 }
 
 func (api *API) providerConfigured(id string) bool {
-	switch id {
-	case "google":
-		return oauthConfigured(api.Google)
-	case "facebook":
-		return oauthConfigured(api.Facebook)
-	case "github":
-		return oauthConfigured(api.GitHub)
-	default:
-		return false
-	}
+	provider, ok := api.Providers[id]
+	return ok && provider.Configured()
 }
 
 func (api *API) providerEnabled(id string) bool {

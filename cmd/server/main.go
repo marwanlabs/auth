@@ -10,9 +10,8 @@ import (
 
 	"authserver/internal/auth"
 	"authserver/internal/httpapi"
+	"authserver/internal/providers"
 	"authserver/internal/store"
-	"golang.org/x/oauth2"
-	"golang.org/x/oauth2/endpoints"
 )
 
 func main() {
@@ -45,44 +44,19 @@ func main() {
 
 	authSvc := &auth.Service{Store: s, Secure: secureCookies}
 	api := httpapi.New(authSvc, s)
-	if googleClientID != "" && googleClientSecret != "" {
-		api.Google = &httpapi.GoogleOAuth{
-			Config: oauth2.Config{
-				ClientID: googleClientID, ClientSecret: googleClientSecret,
-				Endpoint: endpoints.Google, RedirectURL: googleRedirectURL,
-				Scopes: []string{"openid", "email", "profile"},
-			},
-			Secure: secureCookies, Name: "google", UserInfoURL: "https://openidconnect.googleapis.com/v1/userinfo",
-		}
-	}
 	facebookClientID := os.Getenv("AUTH_FACEBOOK_CLIENT_ID")
 	facebookClientSecret := os.Getenv("AUTH_FACEBOOK_CLIENT_SECRET")
 	facebookRedirectURL := getenv("AUTH_FACEBOOK_REDIRECT_URL", "http://localhost:8090/api/auth/facebook/callback")
-	if facebookClientID != "" && facebookClientSecret != "" {
-		api.Facebook = &httpapi.OAuthProvider{
-			Config: oauth2.Config{ClientID: facebookClientID, ClientSecret: facebookClientSecret, Endpoint: endpoints.Facebook, RedirectURL: facebookRedirectURL, Scopes: []string{"email"}},
-			Secure: secureCookies, Name: "facebook", UserInfoURL: "https://graph.facebook.com/me?fields=id,email",
-		}
-	}
 	githubClientID := os.Getenv("AUTH_GITHUB_CLIENT_ID")
 	githubClientSecret := os.Getenv("AUTH_GITHUB_CLIENT_SECRET")
 	githubRedirectURL := getenv("AUTH_GITHUB_REDIRECT_URL", "http://localhost:8090/api/auth/github/callback")
-	if githubClientID != "" && githubClientSecret != "" {
-		api.GitHub = &httpapi.OAuthProvider{
-			Config: oauth2.Config{
-				ClientID: githubClientID, ClientSecret: githubClientSecret,
-				Endpoint:    oauth2.Endpoint{AuthURL: "https://github.com/login/oauth/authorize", TokenURL: "https://github.com/login/oauth/access_token"},
-				RedirectURL: githubRedirectURL, Scopes: []string{"user:email"},
-			},
-			Secure: secureCookies, Name: "github", UserInfoURL: "https://api.github.com/user",
-		}
-	}
+	api.Providers["google"] = providers.NewGoogle(googleClientID, googleClientSecret, googleRedirectURL)
+	api.Providers["facebook"] = providers.NewFacebook(facebookClientID, facebookClientSecret, facebookRedirectURL)
+	api.Providers["github"] = providers.NewGitHub(githubClientID, githubClientSecret, githubRedirectURL)
 
 	mux := http.NewServeMux()
 	api.Register(mux)
-	api.RegisterGoogle(mux)
-	api.RegisterFacebook(mux)
-	api.RegisterGitHub(mux)
+	api.RegisterSocialRoutes(mux)
 	api.RegisterProviderRoutes(mux)
 
 	// Serve the static frontend from ./web at the root.

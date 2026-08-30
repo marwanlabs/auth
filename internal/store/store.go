@@ -114,7 +114,41 @@ func Open(path string) (*Store, error) {
 	if s.d.Providers == nil {
 		s.d.Providers = make(map[string]bool)
 	}
+	if err := s.migrateLegacyIdentities(); err != nil {
+		return nil, err
+	}
 	return s, nil
+}
+
+func (s *Store) migrateLegacyIdentities() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	changed := false
+	for _, user := range s.d.Users {
+		if user.GoogleID == "" {
+			continue
+		}
+		found := false
+		for _, identity := range s.d.Identities {
+			if identity.Provider == "google" && identity.Subject == user.GoogleID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			id := mustIdentityID()
+			s.d.Identities[id] = &SocialIdentity{ID: id, Provider: "google", Subject: user.GoogleID, UserID: user.ID, CreatedAt: user.CreatedAt}
+			changed = true
+		}
+	}
+	if changed {
+		return s.saveLocked()
+	}
+	return nil
+}
+
+func mustIdentityID() string {
+	return fmt.Sprintf("legacy-%d", time.Now().UnixNano())
 }
 
 // saveLocked writes the store to disk atomically (write temp file, rename).

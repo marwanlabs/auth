@@ -114,6 +114,14 @@ npm run dev
 
 Then open http://localhost:3000.
 
+### Authentication architecture
+
+Social sign-in is split into provider adapters under `internal/providers/`, a
+shared account-linking service under `internal/socialauth/`, and thin HTTP
+handlers under `internal/httpapi/`. Adding a provider means implementing the
+provider interface and registering the adapter; OAuth state, identity linking,
+roles, disabled users, and sessions remain shared behavior.
+
 ### Environment variables
 
 | Variable               | Default            | Purpose                                                   |

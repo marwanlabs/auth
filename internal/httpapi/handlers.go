@@ -10,19 +10,20 @@ import (
 	"time"
 
 	"authserver/internal/auth"
+	"authserver/internal/providers"
+	"authserver/internal/socialauth"
 	"authserver/internal/store"
 )
 
 type API struct {
-	Auth     *auth.Service
-	Store    *store.Store
-	Google   *OAuthProvider
-	Facebook *OAuthProvider
-	GitHub   *OAuthProvider
+	Auth      *auth.Service
+	Store     *store.Store
+	Providers map[string]providers.Provider
+	Social    *socialauth.Service
 }
 
 func New(a *auth.Service, s *store.Store) *API {
-	return &API{Auth: a, Store: s}
+	return &API{Auth: a, Store: s, Providers: make(map[string]providers.Provider), Social: socialauth.New(s)}
 }
 
 // Register attaches all routes to mux.
